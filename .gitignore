@@ -1,0 +1,37 @@
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+nbproject/
+.project
+.buildpath
+.settings/
+
+# PHP / Composer
+composer.lock
+
+# Node (in case of future build tooling)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# WordPress local artifacts
+*.log
+*.bak
+*.tmp
+
+# Build / dist
+build/
+dist/
+*.zip
+
+# Local tool state
+.claude/

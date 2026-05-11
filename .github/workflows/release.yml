@@ -1,0 +1,31 @@
+name: Release Plugin ZIP
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create plugin ZIP
+        run: |
+          mkdir wp-simple-wallet
+          rsync -a --exclude='.git' --exclude='.github' ./ wp-simple-wallet/
+          zip -r wp-simple-wallet-${{ steps.version.outputs.VERSION }}.zip wp-simple-wallet/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wp-simple-wallet-${{ steps.version.outputs.VERSION }}.zip
+          generate_release_notes: true
