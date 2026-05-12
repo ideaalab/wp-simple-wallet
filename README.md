@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.2.1 |
+| **Version** | 1.2.2 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -181,6 +181,9 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.2.2
+- **Fix**: the Wallet menu icon no longer fights theme styling. Only `font-family` and `content` are emitted on `.woocommerce-MyAccount-navigation-link--wallet > a::before`, so margins/alignment match the rest of the menu items.
 
 ### 1.2.1
 - **Fix**: 404 on `/my-account/wallet/` after plugin upgrades. Rewrite rules are now flushed automatically once per version.

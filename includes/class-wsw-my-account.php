@@ -110,7 +110,7 @@ class WSW_My_Account {
 		$icon_css = apply_filters(
 			'wsw_account_menu_icon_css',
 			sprintf(
-				'.woocommerce-MyAccount-navigation-link--%1$s > a::before{font-family:dashicons!important;content:"%2$s";margin-right:6px;vertical-align:middle;display:inline-block;text-decoration:none;font-weight:400;line-height:1}',
+				'.woocommerce-MyAccount-navigation-link--%1$s > a::before{font-family:dashicons;content:"%2$s"}',
 				self::ENDPOINT,
 				$icon_glyph
 			),
