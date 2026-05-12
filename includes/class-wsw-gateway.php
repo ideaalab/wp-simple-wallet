@@ -55,6 +55,16 @@ class WSW_Gateway extends WC_Payment_Gateway {
 		);
 	}
 
+	public function get_title() {
+		$title   = parent::get_title();
+		$user_id = get_current_user_id();
+		if ( $user_id && WSW_User::is_wallet_active( $user_id ) ) {
+			$balance = WSW_Wallet::get_balance( $user_id );
+			$title  .= ' (' . wp_strip_all_tags( wc_price( $balance ) ) . ')';
+		}
+		return $title;
+	}
+
 	public function is_available() {
 		if ( 'yes' !== $this->enabled ) {
 			return false;

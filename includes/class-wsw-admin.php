@@ -18,6 +18,7 @@ class WSW_Admin {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'maybe_export_csv' ) );
 		add_action( 'admin_post_wsw_adjust_balance', array( $this, 'handle_adjust_balance' ) );
+		add_action( 'admin_post_wsw_save_user_limits', array( $this, 'handle_save_user_limits' ) );
 		add_action( 'admin_post_wsw_enable_wallet', array( $this, 'handle_enable_wallet' ) );
 		add_action( 'admin_post_wsw_remove_wallet', array( $this, 'handle_remove_wallet' ) );
 		add_action( 'wp_ajax_wsw_search_users', array( $this, 'ajax_search_users' ) );
@@ -298,6 +299,58 @@ class WSW_Admin {
 				</label>
 			</p>
 			<p><button type="submit" class="button button-primary"><?php esc_html_e( 'Apply adjustment', 'wp-simple-wallet' ); ?></button></p>
+		</form>
+
+		<h3><?php esc_html_e( 'Overdraft limit (this user)', 'wp-simple-wallet' ); ?></h3>
+		<?php
+		$policy   = WSW_User::get_overdraft( $user_id );
+		$defaults = WSW_Wallet::get_settings();
+		?>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wsw-limits-form">
+			<?php wp_nonce_field( 'wsw_save_user_limits_' . $user_id, 'wsw_limits_nonce' ); ?>
+			<input type="hidden" name="action" value="wsw_save_user_limits" />
+			<input type="hidden" name="user_id" value="<?php echo (int) $user_id; ?>" />
+			<table class="form-table">
+				<tr>
+					<th><?php esc_html_e( 'Allow negative balance', 'wp-simple-wallet' ); ?></th>
+					<td>
+						<select name="allow_negative">
+							<option value="" <?php selected( $policy['user_allow_raw'], '' ); ?>>
+								<?php
+								/* translators: %s: yes or no */
+								printf( esc_html__( 'Use store default (%s)', 'wp-simple-wallet' ), 'yes' === $defaults['allow_negative'] ? esc_html__( 'yes', 'wp-simple-wallet' ) : esc_html__( 'no', 'wp-simple-wallet' ) );
+								?>
+							</option>
+							<option value="yes" <?php selected( $policy['user_allow_raw'], 'yes' ); ?>><?php esc_html_e( 'Yes — this user can overdraw', 'wp-simple-wallet' ); ?></option>
+							<option value="no"  <?php selected( $policy['user_allow_raw'], 'no' ); ?>><?php esc_html_e( 'No — block negative balance', 'wp-simple-wallet' ); ?></option>
+						</select>
+					</td>
+				</tr>
+				<tr>
+					<th><?php esc_html_e( 'Max negative balance', 'wp-simple-wallet' ); ?></th>
+					<td>
+						<input type="number" step="0.01" min="0" name="max_negative" value="<?php echo esc_attr( $policy['user_max_raw'] ); ?>" placeholder="<?php
+							/* translators: %s: max negative balance from store defaults */
+							printf( esc_attr__( 'Empty = store default (%s)', 'wp-simple-wallet' ), esc_attr( $defaults['max_negative'] ) );
+						?>" />
+						<p class="description">
+							<?php
+							$badge_allow = sprintf( '<code>%s</code>', 'user' === $policy['allow_source'] ? esc_html__( 'user', 'wp-simple-wallet' ) : esc_html__( 'default', 'wp-simple-wallet' ) );
+							$badge_max   = sprintf( '<code>%s</code>', 'user'   === $policy['max_source']   ? esc_html__( 'user', 'wp-simple-wallet' ) : esc_html__( 'default', 'wp-simple-wallet' ) );
+							echo wp_kses_post( sprintf(
+								/* translators: 1: allow_negative effective value, 2: max_negative effective value, 3: source badge for allow, 4: source badge for max */
+								__( 'Effective: allow = <strong>%1$s</strong> (%3$s), max = <strong>%2$s</strong> (%4$s). 0 = unlimited.', 'wp-simple-wallet' ),
+								$policy['allow_negative'] ? esc_html__( 'yes', 'wp-simple-wallet' ) : esc_html__( 'no', 'wp-simple-wallet' ),
+								wc_price( $policy['max_negative'] ),
+								$badge_allow,
+								$badge_max
+							) );
+							?>
+						</p>
+					</td>
+				</tr>
+			</table>
+			<p><button type="submit" class="button button-secondary"><?php esc_html_e( 'Save limits', 'wp-simple-wallet' ); ?></button></p>
 		</form>
 
 		<h3><?php esc_html_e( 'Recent transactions', 'wp-simple-wallet' ); ?></h3>
@@ -689,6 +742,32 @@ class WSW_Admin {
 		wp_safe_redirect(
 			add_query_arg(
 				array( 'page' => self::MENU_SLUG, 'tab' => 'wallets', 'wsw_msg' => 'removed' ),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	public function handle_save_user_limits() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'You do not have permission.', 'wp-simple-wallet' ) );
+		}
+		$user_id = isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0;
+		check_admin_referer( 'wsw_save_user_limits_' . $user_id, 'wsw_limits_nonce' );
+
+		$allow = isset( $_POST['allow_negative'] ) ? sanitize_text_field( wp_unslash( $_POST['allow_negative'] ) ) : '';
+		$max   = isset( $_POST['max_negative'] ) ? sanitize_text_field( wp_unslash( $_POST['max_negative'] ) ) : '';
+
+		WSW_User::set_overdraft( $user_id, $allow, $max );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'    => self::MENU_SLUG,
+					'tab'     => 'wallets',
+					'user_id' => $user_id,
+					'wsw_msg' => 'ok',
+				),
 				admin_url( 'admin.php' )
 			)
 		);

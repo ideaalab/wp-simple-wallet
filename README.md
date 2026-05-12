@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.2.2 |
+| **Version** | 1.3.0 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -181,6 +181,10 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.3.0
+- **Checkout**: the "Pay with wallet" payment method now shows the customer's current balance in parentheses, e.g. *Pay with wallet (€42.30)*.
+- **Per-user overdraft limits**: each customer can now have their own *Allow negative balance* and *Max negative balance* values from their wallet detail page in `WooCommerce → Wallets`. Empty fields fall back to the store defaults. Effective values and their source ("user" vs "default") are shown inline.
 
 ### 1.2.2
 - **Fix**: the Wallet menu icon no longer fights theme styling. Only `font-family` and `content` are emitted on `.woocommerce-MyAccount-navigation-link--wallet > a::before`, so margins/alignment match the rest of the menu items.

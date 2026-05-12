@@ -9,8 +9,66 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WSW_User {
 
-	const META_ACTIVE = '_wsw_wallet_active';
-	const ROLE        = 'wsw_wallet_customer';
+	const META_ACTIVE             = '_wsw_wallet_active';
+	const META_ALLOW_NEGATIVE     = '_wsw_allow_negative';
+	const META_MAX_NEGATIVE       = '_wsw_max_negative';
+	const ROLE                    = 'wsw_wallet_customer';
+
+	/**
+	 * Resolve the effective overdraft policy for a user.
+	 *
+	 * Per-user meta overrides global settings; empty meta means "use store default".
+	 *
+	 * @param int $user_id
+	 * @return array {
+	 *     @type bool   $allow_negative  Whether the user may overdraw.
+	 *     @type float  $max_negative    Hard limit on the negative balance (0 = unlimited).
+	 *     @type string $allow_source    'user' or 'default'.
+	 *     @type string $max_source      'user' or 'default'.
+	 *     @type string $user_allow_raw  Raw meta value ('yes'|'no'|'').
+	 *     @type string $user_max_raw    Raw meta value (string number or '').
+	 * }
+	 */
+	public static function get_overdraft( $user_id ) {
+		$settings = WSW_Wallet::get_settings();
+		$default_allow = 'yes' === $settings['allow_negative'];
+		$default_max   = (float) $settings['max_negative'];
+
+		$user_allow = (string) get_user_meta( absint( $user_id ), self::META_ALLOW_NEGATIVE, true );
+		$user_max   = (string) get_user_meta( absint( $user_id ), self::META_MAX_NEGATIVE, true );
+
+		$allow_source = '' !== $user_allow ? 'user' : 'default';
+		$max_source   = '' !== $user_max   ? 'user' : 'default';
+
+		return array(
+			'allow_negative' => '' !== $user_allow ? ( 'yes' === $user_allow ) : $default_allow,
+			'max_negative'   => '' !== $user_max   ? (float) $user_max : $default_max,
+			'allow_source'   => $allow_source,
+			'max_source'     => $max_source,
+			'user_allow_raw' => $user_allow,
+			'user_max_raw'   => $user_max,
+		);
+	}
+
+	public static function set_overdraft( $user_id, $allow_raw, $max_raw ) {
+		$user_id = absint( $user_id );
+		if ( ! $user_id ) {
+			return;
+		}
+
+		// '' means "delete the override" -> fall back to global.
+		if ( '' === $allow_raw ) {
+			delete_user_meta( $user_id, self::META_ALLOW_NEGATIVE );
+		} else {
+			update_user_meta( $user_id, self::META_ALLOW_NEGATIVE, 'yes' === $allow_raw ? 'yes' : 'no' );
+		}
+
+		if ( '' === $max_raw ) {
+			delete_user_meta( $user_id, self::META_MAX_NEGATIVE );
+		} else {
+			update_user_meta( $user_id, self::META_MAX_NEGATIVE, (string) max( 0, (float) $max_raw ) );
+		}
+	}
 
 	public static function is_wallet_active( $user_id ) {
 		$user_id = absint( $user_id );

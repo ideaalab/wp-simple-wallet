@@ -56,9 +56,9 @@ class WSW_Wallet {
 
 		$balance      = self::get_balance( $user_id );
 		$after        = $balance - $amount;
-		$settings     = self::get_settings();
-		$allow_neg    = 'yes' === $settings['allow_negative'];
-		$max_negative = (float) $settings['max_negative'];
+		$policy       = WSW_User::get_overdraft( $user_id );
+		$allow_neg    = $policy['allow_negative'];
+		$max_negative = $policy['max_negative'];
 
 		$result = true;
 

@@ -24,7 +24,7 @@ $wpdb->query( "DROP TABLE IF EXISTS {$table}" ); // phpcs:ignore
 delete_option( 'wsw_settings' );
 delete_option( 'wsw_db_version' );
 
-$wpdb->query( "DELETE FROM {$wpdb->usermeta} WHERE meta_key IN ('_wsw_balance', '_wsw_wallet_active')" ); // phpcs:ignore
+$wpdb->query( "DELETE FROM {$wpdb->usermeta} WHERE meta_key IN ('_wsw_balance', '_wsw_wallet_active', '_wsw_allow_negative', '_wsw_max_negative')" ); // phpcs:ignore
 
 if ( get_role( 'wsw_wallet_customer' ) ) {
 	remove_role( 'wsw_wallet_customer' );
