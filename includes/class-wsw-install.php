@@ -80,7 +80,7 @@ class WSW_Install {
 					'max_negative'         => '0',
 					'cleanup_on_uninstall' => 'no',
 					'gateway_title'        => __( 'Pay with wallet', 'wp-simple-wallet' ),
-					'gateway_description'  => __( 'Use your wallet balance to pay for this order.', 'wp-simple-wallet' ),
+					'gateway_description'  => __( 'Use your wallet balance to pay for this order. Available: {balance}', 'wp-simple-wallet' ),
 					'myaccount_position'   => 'dashboard',
 					'myaccount_show_icon'  => 'yes',
 					'myaccount_icon_glyph' => '\f18e',

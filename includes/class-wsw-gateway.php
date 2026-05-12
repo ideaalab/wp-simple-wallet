@@ -29,6 +29,27 @@ class WSW_Gateway extends WC_Payment_Gateway {
 		$this->enabled     = $this->get_option( 'enabled', 'yes' );
 
 		add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
+		add_filter( 'woocommerce_gateway_description', array( $this, 'replace_description_placeholders' ), 10, 2 );
+	}
+
+	/**
+	 * Replace {balance} in the gateway description with the current customer
+	 * balance. Runs on every render of the gateway in checkout.
+	 *
+	 * @param string $description
+	 * @param string $gateway_id
+	 * @return string
+	 */
+	public function replace_description_placeholders( $description, $gateway_id ) {
+		if ( $this->id !== $gateway_id || false === strpos( (string) $description, '{balance}' ) ) {
+			return $description;
+		}
+		$user_id = get_current_user_id();
+		if ( ! $user_id ) {
+			return str_replace( '{balance}', '', $description );
+		}
+		$formatted = wp_strip_all_tags( wc_price( WSW_Wallet::get_balance( $user_id ) ) );
+		return str_replace( '{balance}', $formatted, $description );
 	}
 
 	public function init_form_fields() {
@@ -49,20 +70,10 @@ class WSW_Gateway extends WC_Payment_Gateway {
 			'description' => array(
 				'title'       => __( 'Description', 'wp-simple-wallet' ),
 				'type'        => 'textarea',
-				'description' => __( 'Shown to customers below the payment method.', 'wp-simple-wallet' ),
+				'description' => __( 'Shown to customers below the payment method. Use the placeholder <code>{balance}</code> to insert the customer\'s current wallet balance.', 'wp-simple-wallet' ),
 				'default'     => $settings['gateway_description'],
 			),
 		);
-	}
-
-	public function get_title() {
-		$title   = parent::get_title();
-		$user_id = get_current_user_id();
-		if ( $user_id && WSW_User::is_wallet_active( $user_id ) ) {
-			$balance = WSW_Wallet::get_balance( $user_id );
-			$title  .= ' (' . wp_strip_all_tags( wc_price( $balance ) ) . ')';
-		}
-		return $title;
 	}
 
 	public function is_available() {

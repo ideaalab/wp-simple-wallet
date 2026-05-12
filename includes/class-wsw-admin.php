@@ -500,7 +500,16 @@ class WSW_Admin {
 				</tr>
 				<tr>
 					<th scope="row"><?php esc_html_e( 'Gateway description', 'wp-simple-wallet' ); ?></th>
-					<td><textarea class="large-text" rows="3" name="wsw_settings[gateway_description]"><?php echo esc_textarea( $settings['gateway_description'] ); ?></textarea></td>
+					<td>
+						<textarea class="large-text" rows="3" name="wsw_settings[gateway_description]"><?php echo esc_textarea( $settings['gateway_description'] ); ?></textarea>
+						<p class="description">
+							<?php
+							echo wp_kses_post(
+								__( 'Shown to customers under the payment method in checkout. Available placeholder: <code>{balance}</code> — replaced with the customer\'s current wallet balance.', 'wp-simple-wallet' )
+							);
+							?>
+						</p>
+					</td>
 				</tr>
 				<tr>
 					<th scope="row"><?php esc_html_e( 'My Account menu position', 'wp-simple-wallet' ); ?></th>
