@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.3.1 |
+| **Version** | 1.3.2 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -181,6 +181,9 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.3.2
+- **Admin UX**: the user detail page now has a single *Save changes* button that persists overdraft limits and applies the optional balance adjustment in one shot. Limits always save; the adjustment is skipped if the amount field is left empty, and reported separately if it fails.
 
 ### 1.3.1
 - **Checkout**: the balance is no longer appended to the gateway title. Instead, the gateway description supports a `{balance}` placeholder that is replaced with the customer's current wallet balance. Default description: *"Use your wallet balance to pay for this order. Available: {balance}"*. The hint is shown next to both the plugin's *Gateway description* setting and WooCommerce's own gateway *Description* field.

@@ -17,8 +17,7 @@ class WSW_Admin {
 		add_action( 'admin_menu', array( $this, 'register_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'maybe_export_csv' ) );
-		add_action( 'admin_post_wsw_adjust_balance', array( $this, 'handle_adjust_balance' ) );
-		add_action( 'admin_post_wsw_save_user_limits', array( $this, 'handle_save_user_limits' ) );
+		add_action( 'admin_post_wsw_save_user', array( $this, 'handle_save_user' ) );
 		add_action( 'admin_post_wsw_enable_wallet', array( $this, 'handle_enable_wallet' ) );
 		add_action( 'admin_post_wsw_remove_wallet', array( $this, 'handle_remove_wallet' ) );
 		add_action( 'wp_ajax_wsw_search_users', array( $this, 'ajax_search_users' ) );
@@ -159,9 +158,11 @@ class WSW_Admin {
 		if ( isset( $_GET['wsw_msg'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$msg  = sanitize_text_field( wp_unslash( $_GET['wsw_msg'] ) ); // phpcs:ignore
 			$map  = array(
-				'enabled'  => array( 'updated', __( 'Wallet enabled for the selected user.', 'wp-simple-wallet' ) ),
-				'removed'  => array( 'updated', __( 'Wallet disabled. Balance and transaction history were preserved.', 'wp-simple-wallet' ) ),
-				'ok'       => array( 'updated', __( 'Done.', 'wp-simple-wallet' ) ),
+				'enabled'                => array( 'updated', __( 'Wallet enabled for the selected user.', 'wp-simple-wallet' ) ),
+				'removed'                => array( 'updated', __( 'Wallet disabled. Balance and transaction history were preserved.', 'wp-simple-wallet' ) ),
+				'saved'                  => array( 'updated', __( 'Changes saved.', 'wp-simple-wallet' ) ),
+				'saved_with_adjustment'  => array( 'updated', __( 'Changes saved and balance adjustment applied.', 'wp-simple-wallet' ) ),
+				'ok'                     => array( 'updated', __( 'Done.', 'wp-simple-wallet' ) ),
 			);
 			if ( isset( $map[ $msg ] ) ) {
 				echo '<div class="notice notice-' . esc_attr( $map[ $msg ][0] ) . ' is-dismissible"><p>' . esc_html( $map[ $msg ][1] ) . '</p></div>';
@@ -276,40 +277,38 @@ class WSW_Admin {
 		<p><a href="<?php echo esc_url( $back ); ?>">&larr; <?php esc_html_e( 'Back to wallets', 'wp-simple-wallet' ); ?></a></p>
 		<h2><?php echo esc_html( $user->display_name ); ?> — <?php echo wp_kses_post( wc_price( $balance ) ); ?></h2>
 
-		<h3><?php esc_html_e( 'Adjust balance', 'wp-simple-wallet' ); ?></h3>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wsw-adjust-form">
-			<?php wp_nonce_field( 'wsw_adjust_balance_' . $user_id, 'wsw_nonce' ); ?>
-			<input type="hidden" name="action" value="wsw_adjust_balance" />
-			<input type="hidden" name="user_id" value="<?php echo (int) $user_id; ?>" />
-			<p>
-				<label><?php esc_html_e( 'Type', 'wp-simple-wallet' ); ?>
-					<select name="direction">
-						<option value="credit"><?php esc_html_e( 'Add (credit)', 'wp-simple-wallet' ); ?></option>
-						<option value="debit"><?php esc_html_e( 'Subtract (debit)', 'wp-simple-wallet' ); ?></option>
-					</select>
-				</label>
-				&nbsp;
-				<label><?php esc_html_e( 'Amount', 'wp-simple-wallet' ); ?>
-					<input type="number" step="0.01" min="0" name="amount" required />
-				</label>
-			</p>
-			<p>
-				<label style="display:block"><?php esc_html_e( 'Note', 'wp-simple-wallet' ); ?>
-					<input type="text" name="note" class="regular-text" />
-				</label>
-			</p>
-			<p><button type="submit" class="button button-primary"><?php esc_html_e( 'Apply adjustment', 'wp-simple-wallet' ); ?></button></p>
-		</form>
-
-		<h3><?php esc_html_e( 'Overdraft limit (this user)', 'wp-simple-wallet' ); ?></h3>
 		<?php
 		$policy   = WSW_User::get_overdraft( $user_id );
 		$defaults = WSW_Wallet::get_settings();
 		?>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wsw-limits-form">
-			<?php wp_nonce_field( 'wsw_save_user_limits_' . $user_id, 'wsw_limits_nonce' ); ?>
-			<input type="hidden" name="action" value="wsw_save_user_limits" />
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wsw-user-form">
+			<?php wp_nonce_field( 'wsw_save_user_' . $user_id, 'wsw_user_form_nonce' ); ?>
+			<input type="hidden" name="action" value="wsw_save_user" />
 			<input type="hidden" name="user_id" value="<?php echo (int) $user_id; ?>" />
+
+			<h3><?php esc_html_e( 'Adjust balance', 'wp-simple-wallet' ); ?></h3>
+			<p class="description"><?php esc_html_e( 'Leave amount empty if you only want to update the overdraft limit.', 'wp-simple-wallet' ); ?></p>
+			<table class="form-table">
+				<tr>
+					<th><label><?php esc_html_e( 'Type', 'wp-simple-wallet' ); ?></label></th>
+					<td>
+						<select name="direction">
+							<option value="credit"><?php esc_html_e( 'Add (credit)', 'wp-simple-wallet' ); ?></option>
+							<option value="debit"><?php esc_html_e( 'Subtract (debit)', 'wp-simple-wallet' ); ?></option>
+						</select>
+					</td>
+				</tr>
+				<tr>
+					<th><label><?php esc_html_e( 'Amount', 'wp-simple-wallet' ); ?></label></th>
+					<td><input type="number" step="0.01" min="0" name="amount" value="" /></td>
+				</tr>
+				<tr>
+					<th><label><?php esc_html_e( 'Note', 'wp-simple-wallet' ); ?></label></th>
+					<td><input type="text" name="note" class="regular-text" value="" /></td>
+				</tr>
+			</table>
+
+			<h3><?php esc_html_e( 'Overdraft limit (this user)', 'wp-simple-wallet' ); ?></h3>
 			<table class="form-table">
 				<tr>
 					<th><?php esc_html_e( 'Allow negative balance', 'wp-simple-wallet' ); ?></th>
@@ -350,7 +349,8 @@ class WSW_Admin {
 					</td>
 				</tr>
 			</table>
-			<p><button type="submit" class="button button-secondary"><?php esc_html_e( 'Save limits', 'wp-simple-wallet' ); ?></button></p>
+
+			<p><button type="submit" class="button button-primary"><?php esc_html_e( 'Save changes', 'wp-simple-wallet' ); ?></button></p>
 		</form>
 
 		<h3><?php esc_html_e( 'Recent transactions', 'wp-simple-wallet' ); ?></h3>
@@ -757,17 +757,39 @@ class WSW_Admin {
 		exit;
 	}
 
-	public function handle_save_user_limits() {
+	/**
+	 * Unified handler for the user detail form: applies an optional balance
+	 * adjustment AND saves the per-user overdraft policy in a single request.
+	 *
+	 * Limits are always persisted. The adjustment is only attempted when the
+	 * admin entered an amount > 0. If the adjustment fails (insufficient
+	 * balance, overdraft cap, etc.), limits are still saved and the error is
+	 * reported back to the admin.
+	 */
+	public function handle_save_user() {
 		if ( ! current_user_can( self::CAPABILITY ) ) {
 			wp_die( esc_html__( 'You do not have permission.', 'wp-simple-wallet' ) );
 		}
 		$user_id = isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0;
-		check_admin_referer( 'wsw_save_user_limits_' . $user_id, 'wsw_limits_nonce' );
+		check_admin_referer( 'wsw_save_user_' . $user_id, 'wsw_user_form_nonce' );
 
+		// 1) Save limits — never fails.
 		$allow = isset( $_POST['allow_negative'] ) ? sanitize_text_field( wp_unslash( $_POST['allow_negative'] ) ) : '';
 		$max   = isset( $_POST['max_negative'] ) ? sanitize_text_field( wp_unslash( $_POST['max_negative'] ) ) : '';
-
 		WSW_User::set_overdraft( $user_id, $allow, $max );
+
+		// 2) Apply adjustment only if an amount was entered.
+		$amount = isset( $_POST['amount'] ) ? abs( (float) wp_unslash( $_POST['amount'] ) ) : 0;
+		$msg    = 'saved';
+
+		if ( $amount > 0 ) {
+			$direction = isset( $_POST['direction'] ) ? sanitize_key( wp_unslash( $_POST['direction'] ) ) : 'credit';
+			$note      = isset( $_POST['note'] ) ? sanitize_text_field( wp_unslash( $_POST['note'] ) ) : '';
+			$delta     = 'debit' === $direction ? -$amount : $amount;
+
+			$result = WSW_Wallet::adjust( $user_id, $delta, WSW_Wallet::TYPE_ADJUSTMENT, $note );
+			$msg    = is_wp_error( $result ) ? rawurlencode( $result->get_error_message() ) : 'saved_with_adjustment';
+		}
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -775,40 +797,11 @@ class WSW_Admin {
 					'page'    => self::MENU_SLUG,
 					'tab'     => 'wallets',
 					'user_id' => $user_id,
-					'wsw_msg' => 'ok',
+					'wsw_msg' => $msg,
 				),
 				admin_url( 'admin.php' )
 			)
 		);
-		exit;
-	}
-
-	public function handle_adjust_balance() {
-		if ( ! current_user_can( self::CAPABILITY ) ) {
-			wp_die( esc_html__( 'You do not have permission.', 'wp-simple-wallet' ) );
-		}
-		$user_id = isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0;
-		check_admin_referer( 'wsw_adjust_balance_' . $user_id, 'wsw_nonce' );
-
-		$direction = isset( $_POST['direction'] ) ? sanitize_key( wp_unslash( $_POST['direction'] ) ) : 'credit';
-		$amount    = isset( $_POST['amount'] ) ? abs( (float) wp_unslash( $_POST['amount'] ) ) : 0;
-		$note      = isset( $_POST['note'] ) ? sanitize_text_field( wp_unslash( $_POST['note'] ) ) : '';
-
-		$delta = 'debit' === $direction ? -$amount : $amount;
-
-		$result = WSW_Wallet::adjust( $user_id, $delta, WSW_Wallet::TYPE_ADJUSTMENT, $note );
-
-		$redirect = add_query_arg(
-			array(
-				'page'    => self::MENU_SLUG,
-				'tab'     => 'wallets',
-				'user_id' => $user_id,
-				'wsw_msg' => is_wp_error( $result ) ? rawurlencode( $result->get_error_message() ) : 'ok',
-			),
-			admin_url( 'admin.php' )
-		);
-
-		wp_safe_redirect( $redirect );
 		exit;
 	}
 
