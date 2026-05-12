@@ -18,6 +18,9 @@ class WSW_Admin {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'maybe_export_csv' ) );
 		add_action( 'admin_post_wsw_adjust_balance', array( $this, 'handle_adjust_balance' ) );
+		add_action( 'admin_post_wsw_enable_wallet', array( $this, 'handle_enable_wallet' ) );
+		add_action( 'admin_post_wsw_remove_wallet', array( $this, 'handle_remove_wallet' ) );
+		add_action( 'wp_ajax_wsw_search_users', array( $this, 'ajax_search_users' ) );
 
 		// User profile checkbox.
 		add_action( 'show_user_profile', array( $this, 'render_user_profile_field' ) );
@@ -70,7 +73,28 @@ class WSW_Admin {
 		}
 		wp_add_inline_style(
 			'common',
-			'.wsw-balance-positive{color:#2e7d32;font-weight:600}.wsw-balance-negative{color:#c62828;font-weight:600}.wsw-adjust-form input[type=number]{width:120px}'
+			'
+			.wsw-balance-positive{color:#2e7d32;font-weight:600}
+			.wsw-balance-negative{color:#c62828;font-weight:600}
+			.wsw-adjust-form input[type=number]{width:120px}
+			.wsw-modal{position:fixed;inset:0;z-index:100100;display:none;align-items:center;justify-content:center}
+			.wsw-modal.is-open{display:flex}
+			.wsw-modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.5)}
+			.wsw-modal-dialog{position:relative;background:#fff;border-radius:6px;padding:24px;width:90%;max-width:520px;box-shadow:0 4px 20px rgba(0,0,0,0.25)}
+			.wsw-modal-dialog h2{margin-top:0}
+			.wsw-modal-dialog input[type=search]{width:100%;padding:8px;margin:8px 0 0}
+			.wsw-modal-actions{margin-top:14px;text-align:right}
+			#wsw-search-results{max-height:320px;overflow-y:auto;margin:12px -8px;border-top:1px solid #eee}
+			.wsw-user-result{padding:10px 8px;border-bottom:1px solid #f0f0f0;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+			.wsw-user-result:hover{background:#f0f6fc}
+			.wsw-user-result.already-active{color:#888;cursor:not-allowed}
+			.wsw-user-result.already-active:hover{background:transparent}
+			.wsw-user-result small{color:#777}
+			.wsw-user-result .wsw-tag{background:#dcdcde;color:#1d2327;padding:2px 8px;border-radius:10px;font-size:11px}
+			.wsw-user-result.already-active .wsw-tag{background:#cfe5cf;color:#1d3a1d}
+			.wsw-search-empty{padding:16px;color:#777;text-align:center}
+			.wsw-row-actions{display:flex;gap:6px}
+			'
 		);
 	}
 
@@ -118,12 +142,33 @@ class WSW_Admin {
 	private function render_wallets_tab() {
 		$search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : ''; // phpcs:ignore
 		$users  = WSW_User::get_users_with_wallet( array( 'search' => $search ) );
+
+		// Flash messages.
+		if ( isset( $_GET['wsw_msg'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$msg  = sanitize_text_field( wp_unslash( $_GET['wsw_msg'] ) ); // phpcs:ignore
+			$map  = array(
+				'enabled'  => array( 'updated', __( 'Wallet enabled for the selected user.', 'wp-simple-wallet' ) ),
+				'removed'  => array( 'updated', __( 'Wallet disabled. Balance and transaction history were preserved.', 'wp-simple-wallet' ) ),
+				'ok'       => array( 'updated', __( 'Done.', 'wp-simple-wallet' ) ),
+			);
+			if ( isset( $map[ $msg ] ) ) {
+				echo '<div class="notice notice-' . esc_attr( $map[ $msg ][0] ) . ' is-dismissible"><p>' . esc_html( $map[ $msg ][1] ) . '</p></div>';
+			} else {
+				echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $msg ) . '</p></div>';
+			}
+		}
 		?>
-		<form method="get" style="margin:12px 0;">
-			<input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>" />
-			<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search user…', 'wp-simple-wallet' ); ?>" />
-			<button type="submit" class="button"><?php esc_html_e( 'Search', 'wp-simple-wallet' ); ?></button>
-		</form>
+		<div style="margin:12px 0;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+			<form method="get" style="display:flex;gap:6px;margin:0">
+				<input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>" />
+				<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search user…', 'wp-simple-wallet' ); ?>" />
+				<button type="submit" class="button"><?php esc_html_e( 'Search', 'wp-simple-wallet' ); ?></button>
+			</form>
+			<button type="button" class="button button-primary" id="wsw-open-create-modal">
+				+ <?php esc_html_e( 'Create wallet for user', 'wp-simple-wallet' ); ?>
+			</button>
+		</div>
+		<?php $this->render_create_wallet_modal(); ?>
 		<table class="widefat striped">
 			<thead>
 				<tr>
@@ -171,7 +216,31 @@ class WSW_Admin {
 								</span>
 							</td>
 							<td>
-								<a href="<?php echo esc_url( $detail_url ); ?>" class="button button-small"><?php esc_html_e( 'Manage', 'wp-simple-wallet' ); ?></a>
+								<div class="wsw-row-actions">
+									<a href="<?php echo esc_url( $detail_url ); ?>" class="button button-small"><?php esc_html_e( 'Manage', 'wp-simple-wallet' ); ?></a>
+									<?php
+									$remove_url = wp_nonce_url(
+										add_query_arg(
+											array(
+												'action'  => 'wsw_remove_wallet',
+												'user_id' => $user->ID,
+											),
+											admin_url( 'admin-post.php' )
+										),
+										'wsw_remove_wallet_' . $user->ID
+									);
+									$confirm_text = sprintf(
+										/* translators: %s user display name */
+										__( "Disable the wallet for %s?\n\nBalance and transaction history are KEPT. If the user has the 'Wallet Customer' role it will be changed to 'Customer'.", 'wp-simple-wallet' ),
+										$user->display_name
+									);
+									?>
+									<a href="<?php echo esc_url( $remove_url ); ?>"
+									   class="button button-small button-link-delete"
+									   onclick="return confirm(<?php echo wp_json_encode( $confirm_text ); ?>);">
+										<?php esc_html_e( 'Remove', 'wp-simple-wallet' ); ?>
+									</a>
+								</div>
 							</td>
 						</tr>
 					<?php endforeach; ?>
@@ -381,6 +450,195 @@ class WSW_Admin {
 			<?php submit_button(); ?>
 		</form>
 		<?php
+	}
+
+	private function render_create_wallet_modal() {
+		$nonce        = wp_create_nonce( 'wsw_search_users' );
+		$enable_nonce = wp_create_nonce( 'wsw_enable_wallet' );
+		$post_url     = esc_url( admin_url( 'admin-post.php' ) );
+		$ajax_url     = esc_url( admin_url( 'admin-ajax.php' ) );
+		?>
+		<div id="wsw-create-modal" class="wsw-modal" aria-hidden="true">
+			<div class="wsw-modal-backdrop" data-wsw-close></div>
+			<div class="wsw-modal-dialog" role="dialog" aria-modal="true">
+				<h2><?php esc_html_e( 'Create wallet for a user', 'wp-simple-wallet' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Search the user by name, login or email and click them to enable their wallet.', 'wp-simple-wallet' ); ?></p>
+				<input type="search" id="wsw-user-search" placeholder="<?php esc_attr_e( 'Type at least 2 characters…', 'wp-simple-wallet' ); ?>" autocomplete="off" />
+				<div id="wsw-search-results"></div>
+				<div class="wsw-modal-actions">
+					<button type="button" class="button" data-wsw-close><?php esc_html_e( 'Cancel', 'wp-simple-wallet' ); ?></button>
+				</div>
+				<form id="wsw-enable-form" method="post" action="<?php echo $post_url; // phpcs:ignore ?>" style="display:none">
+					<input type="hidden" name="action" value="wsw_enable_wallet" />
+					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $enable_nonce ); ?>" />
+					<input type="hidden" name="user_id" id="wsw-enable-user-id" value="" />
+				</form>
+			</div>
+		</div>
+		<script>
+		(function($){
+			var $modal   = $('#wsw-create-modal');
+			var $input   = $('#wsw-user-search');
+			var $results = $('#wsw-search-results');
+			var $form    = $('#wsw-enable-form');
+			var timer    = null;
+
+			function openModal(){ $modal.addClass('is-open'); $input.val('').focus(); $results.empty(); }
+			function closeModal(){ $modal.removeClass('is-open'); }
+
+			$('#wsw-open-create-modal').on('click', openModal);
+			$modal.on('click', '[data-wsw-close]', closeModal);
+			$(document).on('keydown', function(e){ if(e.key === 'Escape') closeModal(); });
+
+			$input.on('input', function(){
+				clearTimeout(timer);
+				var q = $input.val().trim();
+				if (q.length < 2) { $results.empty(); return; }
+				timer = setTimeout(function(){ doSearch(q); }, 250);
+			});
+
+			function doSearch(q){
+				$results.html('<div class="wsw-search-empty"><?php echo esc_js( __( 'Searching…', 'wp-simple-wallet' ) ); ?></div>');
+				$.post('<?php echo $ajax_url; // phpcs:ignore ?>', {
+					action: 'wsw_search_users',
+					_wpnonce: '<?php echo esc_js( $nonce ); ?>',
+					s: q
+				}).done(function(resp){
+					if (!resp || !resp.success) {
+						$results.html('<div class="wsw-search-empty">' + ((resp && resp.data) ? resp.data : '<?php echo esc_js( __( 'Error', 'wp-simple-wallet' ) ); ?>') + '</div>');
+						return;
+					}
+					if (!resp.data.length) {
+						$results.html('<div class="wsw-search-empty"><?php echo esc_js( __( 'No users found.', 'wp-simple-wallet' ) ); ?></div>');
+						return;
+					}
+					var html = '';
+					resp.data.forEach(function(u){
+						var cls = u.active ? 'wsw-user-result already-active' : 'wsw-user-result';
+						var tag = u.active
+							? '<span class="wsw-tag"><?php echo esc_js( __( 'Already has wallet', 'wp-simple-wallet' ) ); ?></span>'
+							: '<span class="wsw-tag"><?php echo esc_js( __( 'Click to enable', 'wp-simple-wallet' ) ); ?></span>';
+						html += '<div class="' + cls + '" data-user-id="' + u.id + '" data-active="' + (u.active ? '1' : '0') + '">' +
+							'<div><strong>' + u.name + '</strong> <small>#' + u.id + ' — ' + u.login + '</small><br/><small>' + u.email + '</small></div>' +
+							tag +
+							'</div>';
+					});
+					$results.html(html);
+				}).fail(function(){
+					$results.html('<div class="wsw-search-empty"><?php echo esc_js( __( 'Request failed.', 'wp-simple-wallet' ) ); ?></div>');
+				});
+			}
+
+			$results.on('click', '.wsw-user-result', function(){
+				if ($(this).data('active') === 1 || $(this).data('active') === '1') return;
+				var id = $(this).data('user-id');
+				$('#wsw-enable-user-id').val(id);
+				$form.trigger('submit');
+			});
+		})(jQuery);
+		</script>
+		<?php
+	}
+
+	public function ajax_search_users() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_send_json_error( __( 'Insufficient permissions.', 'wp-simple-wallet' ), 403 );
+		}
+		check_ajax_referer( 'wsw_search_users' );
+
+		$s = isset( $_POST['s'] ) ? sanitize_text_field( wp_unslash( $_POST['s'] ) ) : '';
+		if ( strlen( $s ) < 2 ) {
+			wp_send_json_success( array() );
+		}
+
+		$users = get_users(
+			array(
+				'search'         => '*' . esc_attr( $s ) . '*',
+				'search_columns' => array( 'user_login', 'user_email', 'display_name', 'user_nicename' ),
+				'number'         => 20,
+				'orderby'        => 'display_name',
+				'order'          => 'ASC',
+			)
+		);
+
+		$out = array();
+		foreach ( $users as $u ) {
+			$out[] = array(
+				'id'     => (int) $u->ID,
+				'name'   => $u->display_name,
+				'login'  => $u->user_login,
+				'email'  => $u->user_email,
+				'active' => WSW_User::is_wallet_active( $u->ID ),
+			);
+		}
+		wp_send_json_success( $out );
+	}
+
+	public function handle_enable_wallet() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'You do not have permission.', 'wp-simple-wallet' ) );
+		}
+		check_admin_referer( 'wsw_enable_wallet' );
+
+		$user_id = isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0;
+		if ( ! $user_id || ! get_user_by( 'id', $user_id ) ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array( 'page' => self::MENU_SLUG, 'tab' => 'wallets', 'wsw_msg' => rawurlencode( __( 'Invalid user.', 'wp-simple-wallet' ) ) ),
+					admin_url( 'admin.php' )
+				)
+			);
+			exit;
+		}
+
+		WSW_User::set_wallet_active( $user_id, true );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array( 'page' => self::MENU_SLUG, 'tab' => 'wallets', 'wsw_msg' => 'enabled' ),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	public function handle_remove_wallet() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'You do not have permission.', 'wp-simple-wallet' ) );
+		}
+		$user_id = isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : 0;
+		check_admin_referer( 'wsw_remove_wallet_' . $user_id );
+
+		$user = $user_id ? get_user_by( 'id', $user_id ) : null;
+		if ( ! $user ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array( 'page' => self::MENU_SLUG, 'tab' => 'wallets', 'wsw_msg' => rawurlencode( __( 'Invalid user.', 'wp-simple-wallet' ) ) ),
+					admin_url( 'admin.php' )
+				)
+			);
+			exit;
+		}
+
+		// Flip the meta flag off.
+		WSW_User::set_wallet_active( $user_id, false );
+
+		// If they were active via the dedicated role, downgrade to default customer.
+		if ( in_array( WSW_User::ROLE, (array) $user->roles, true ) ) {
+			$user->remove_role( WSW_User::ROLE );
+			$still_roles = (array) $user->roles;
+			if ( empty( $still_roles ) ) {
+				$user->add_role( 'customer' );
+			}
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array( 'page' => self::MENU_SLUG, 'tab' => 'wallets', 'wsw_msg' => 'removed' ),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
 	}
 
 	public function handle_adjust_balance() {

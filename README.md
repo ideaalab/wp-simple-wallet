@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.1.0 |
+| **Version** | 1.2.0 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -151,7 +151,42 @@ if ( is_wp_error( $result ) ) {
 - `apply_filters( 'wsw_can_debit', $result, $user_id, $amount, $args )` — let another plugin veto or approve a debit.
 - `apply_filters( 'wsw_transaction_type_label', $label, $type )` — provide human labels for your custom types.
 
+## Security model
+
+The wallet API is **PHP-level only** — there are no HTTP, REST or AJAX endpoints that allow third parties to credit or debit balances. A remote attacker cannot call `wsw_credit()` or `wsw_debit()` over the network. Server-side, the surface is:
+
+- **Admin UI**: every action checks `current_user_can( 'manage_woocommerce' )` plus a WordPress nonce. This includes balance adjustments, CSV export, enabling/removing wallets, the user-search AJAX endpoint, and the user profile checkbox.
+- **Payment gateway**: only debits for the logged-in customer at checkout, with the standard WooCommerce nonces. Respects the overdraft policy and validates `is_available()`.
+- **Refunds**: credited automatically from the `woocommerce_order_refunded` action, with double-credit protection via order meta.
+- **Customer-facing pages**: read-only. The "Wallet" tab in *My Account* never accepts input that changes the balance.
+
+### What about other plugins?
+
+Any PHP code running on your site (themes, plugins, mu-plugins, snippets, scheduled tasks) can call the API. This is the same trust boundary that already applies to **every** WordPress plugin: a malicious plugin can access the database, alter orders, exfiltrate customer data, or empty Stripe — the wallet API doesn't widen this surface, it just exposes a *clean* way to do something a malicious plugin could already do by writing to `usermeta` directly. The defence is the same as for the rest of your stack:
+
+- Only install plugins you trust.
+- Keep an audit log: every wallet movement is recorded with a `source` slug (the calling plugin's identifier), the order it was tied to, the user who triggered it, and a free-form note. Review the *Transactions* tab periodically.
+- Reconcile balances: the sum of all transactions for a user should equal their `_wsw_balance`. A drift indicates code wrote to the meta without going through the API.
+- Wire the `wsw_can_debit` filter to a fraud-detection plugin if you want to veto suspicious patterns (e.g. amount > threshold, source not in your allowlist).
+
+### Concurrency
+
+`wsw_debit()` reads the balance, checks the rule, writes the new balance and inserts the transaction. There is **no row-level lock**, so two simultaneous debits on the same user (the same millisecond) could both pass the eligibility check and produce a small overdraft. For typical e-commerce volume this is theoretical; for high-throughput integrations (mass payout scripts, automated billing) put your work behind a queue or wrap calls in a `LOCK TABLES`/`SELECT ... FOR UPDATE` flow.
+
+### Hardening checklist
+
+- Disable file editing in `wp-config.php`: `define( 'DISALLOW_FILE_EDIT', true );`
+- Restrict who has `manage_woocommerce` to the people who actually need it.
+- 2FA on admin accounts.
+- Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
+
 ## Changelog
+
+### 1.2.0
+- **My Account**: redesigned wallet tab with a prominent balance card and a styled, responsive movements table.
+- **Admin**: new *Create wallet for user* modal with live user search (AJAX, by name/login/email).
+- **Admin**: new *Remove* button per row that disables the wallet and downgrades the *Wallet Customer* role to *Customer*; balance and history are preserved.
+- New `Security model` section in the README.
 
 ### 1.1.0
 - New procedural API for other plugins: `wsw_credit()`, `wsw_debit()`, `wsw_can_debit()`, `wsw_get_balance()`, `wsw_get_transactions()`, `wsw_is_active()`, `wsw_set_active()`, `wsw_get_settings()`.
