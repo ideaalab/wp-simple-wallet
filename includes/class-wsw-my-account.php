@@ -13,6 +13,7 @@ class WSW_My_Account {
 
 	public function __construct() {
 		add_action( 'init', array( $this, 'add_endpoint' ) );
+		add_action( 'wp_loaded', array( $this, 'maybe_flush_rewrite' ), 20 );
 		add_filter( 'query_vars', array( $this, 'query_vars' ), 0 );
 		add_filter( 'woocommerce_account_menu_items', array( $this, 'menu_items' ) );
 		add_action( 'woocommerce_account_' . self::ENDPOINT . '_endpoint', array( $this, 'render_content' ) );
@@ -24,6 +25,18 @@ class WSW_My_Account {
 	public function flush_rewrite_on_activate() {
 		$this->add_endpoint();
 		flush_rewrite_rules();
+		update_option( 'wsw_rewrite_flushed', WSW_VERSION );
+	}
+
+	/**
+	 * Flush rewrite rules once per plugin version, so endpoint updates after a
+	 * plugin upgrade don't leave the customer with a 404 on /my-account/wallet/.
+	 */
+	public function maybe_flush_rewrite() {
+		if ( get_option( 'wsw_rewrite_flushed' ) !== WSW_VERSION ) {
+			flush_rewrite_rules( false );
+			update_option( 'wsw_rewrite_flushed', WSW_VERSION );
+		}
 	}
 
 	public function add_endpoint() {
@@ -35,29 +48,75 @@ class WSW_My_Account {
 		return $vars;
 	}
 
+	/**
+	 * Inject the Wallet menu item at the position chosen in Settings.
+	 *
+	 * Supported values for `myaccount_position`:
+	 *   - "first" / "last"           : prepend or append
+	 *   - any other slug (e.g. "dashboard", "orders", "edit-account",
+	 *     "payment-methods", "customer-logout"): insert AFTER that slug.
+	 *   - empty / not found          : append at the end (safe fallback).
+	 *
+	 * The same value can be overridden per-site via the `wsw_account_menu_position`
+	 * filter.
+	 */
 	public function menu_items( $items ) {
 		$user_id = get_current_user_id();
 		if ( ! $user_id || ! WSW_User::is_wallet_active( $user_id ) ) {
 			return $items;
 		}
 
-		$new = array();
-		foreach ( $items as $key => $label ) {
-			$new[ $key ] = $label;
-			if ( 'dashboard' === $key ) {
-				$new[ self::ENDPOINT ] = __( 'Wallet', 'wp-simple-wallet' );
-			}
+		$settings = WSW_Wallet::get_settings();
+		$position = isset( $settings['myaccount_position'] ) ? $settings['myaccount_position'] : 'dashboard';
+		$position = (string) apply_filters( 'wsw_account_menu_position', $position, $items );
+		$label    = __( 'Wallet', 'wp-simple-wallet' );
+
+		if ( 'first' === $position ) {
+			return array( self::ENDPOINT => $label ) + $items;
 		}
-		if ( ! isset( $new[ self::ENDPOINT ] ) ) {
-			$new[ self::ENDPOINT ] = __( 'Wallet', 'wp-simple-wallet' );
+		if ( 'last' === $position || ! isset( $items[ $position ] ) ) {
+			$items[ self::ENDPOINT ] = $label;
+			return $items;
+		}
+
+		$new = array();
+		foreach ( $items as $key => $value ) {
+			$new[ $key ] = $value;
+			if ( $key === $position ) {
+				$new[ self::ENDPOINT ] = $label;
+			}
 		}
 		return $new;
 	}
 
 	public function maybe_enqueue_styles() {
-		if ( ! is_account_page() ) {
+		if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
 			return;
 		}
+
+		$settings   = WSW_Wallet::get_settings();
+		$show_icon  = ! isset( $settings['myaccount_show_icon'] ) || 'yes' === $settings['myaccount_show_icon'];
+		$icon_glyph = isset( $settings['myaccount_icon_glyph'] ) && $settings['myaccount_icon_glyph'] !== ''
+			? $settings['myaccount_icon_glyph']
+			: '\f18e'; // dashicons-money
+
+		/**
+		 * Override the CSS used to add an icon to the Wallet menu item.
+		 * Return an empty string to disable the default icon entirely.
+		 *
+		 * @param string $css        Default CSS.
+		 * @param string $icon_glyph Configured dashicon escape sequence.
+		 */
+		$icon_css = apply_filters(
+			'wsw_account_menu_icon_css',
+			sprintf(
+				'.woocommerce-MyAccount-navigation-link--%1$s > a::before{font-family:dashicons!important;content:"%2$s";margin-right:6px;vertical-align:middle;display:inline-block;text-decoration:none;font-weight:400;line-height:1}',
+				self::ENDPOINT,
+				$icon_glyph
+			),
+			$icon_glyph
+		);
+
 		$css = '
 			.wsw-balance-card{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:32px 24px;text-align:center;margin:0 0 28px;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
 			.wsw-balance-card .wsw-label{display:block;text-transform:uppercase;letter-spacing:1px;font-size:12px;color:#777;margin-bottom:10px}
@@ -68,6 +127,12 @@ class WSW_My_Account {
 			.wsw-tx-amount.negative{color:#c62828;font-weight:600}
 			.wsw-empty{text-align:center;padding:24px;color:#777;background:#fafafa;border-radius:6px}
 		';
+
+		if ( $show_icon ) {
+			wp_enqueue_style( 'dashicons' );
+			$css .= $icon_css;
+		}
+
 		wp_register_style( 'wsw-myaccount', false );
 		wp_enqueue_style( 'wsw-myaccount' );
 		wp_add_inline_style( 'wsw-myaccount', $css );

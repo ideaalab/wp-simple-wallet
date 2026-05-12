@@ -64,6 +64,17 @@ class WSW_Admin {
 		$out['gateway_title']        = isset( $input['gateway_title'] ) ? sanitize_text_field( wp_unslash( $input['gateway_title'] ) ) : $current['gateway_title'];
 		$out['gateway_description']  = isset( $input['gateway_description'] ) ? sanitize_textarea_field( wp_unslash( $input['gateway_description'] ) ) : $current['gateway_description'];
 
+		$out['myaccount_position']   = isset( $input['myaccount_position'] ) ? sanitize_text_field( wp_unslash( $input['myaccount_position'] ) ) : $current['myaccount_position'];
+		$out['myaccount_show_icon']  = isset( $input['myaccount_show_icon'] ) && 'yes' === $input['myaccount_show_icon'] ? 'yes' : 'no';
+		$out['myaccount_icon_glyph'] = isset( $input['myaccount_icon_glyph'] ) ? sanitize_text_field( wp_unslash( $input['myaccount_icon_glyph'] ) ) : $current['myaccount_icon_glyph'];
+
+		if ( $out['myaccount_position'] !== $current['myaccount_position']
+			|| $out['myaccount_show_icon'] !== $current['myaccount_show_icon']
+			|| $out['myaccount_icon_glyph'] !== $current['myaccount_icon_glyph']
+		) {
+			delete_option( 'wsw_rewrite_flushed' );
+		}
+
 		return $out;
 	}
 
@@ -437,6 +448,49 @@ class WSW_Admin {
 				<tr>
 					<th scope="row"><?php esc_html_e( 'Gateway description', 'wp-simple-wallet' ); ?></th>
 					<td><textarea class="large-text" rows="3" name="wsw_settings[gateway_description]"><?php echo esc_textarea( $settings['gateway_description'] ); ?></textarea></td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'My Account menu position', 'wp-simple-wallet' ); ?></th>
+					<td>
+						<?php
+						$positions = array(
+							'first'           => __( 'First (top of the menu)', 'wp-simple-wallet' ),
+							'dashboard'       => __( 'After Dashboard', 'wp-simple-wallet' ),
+							'orders'          => __( 'After Orders', 'wp-simple-wallet' ),
+							'downloads'       => __( 'After Downloads', 'wp-simple-wallet' ),
+							'edit-address'    => __( 'After Addresses', 'wp-simple-wallet' ),
+							'payment-methods' => __( 'After Payment methods', 'wp-simple-wallet' ),
+							'edit-account'    => __( 'After Account details', 'wp-simple-wallet' ),
+							'last'            => __( 'Last (just before Logout)', 'wp-simple-wallet' ),
+						);
+						?>
+						<select name="wsw_settings[myaccount_position]">
+							<?php foreach ( $positions as $value => $label ) : ?>
+								<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $settings['myaccount_position'], $value ); ?>><?php echo esc_html( $label ); ?></option>
+							<?php endforeach; ?>
+						</select>
+						<p class="description"><?php esc_html_e( 'Where the "Wallet" link appears in the customer "My Account" menu.', 'wp-simple-wallet' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Show menu icon', 'wp-simple-wallet' ); ?></th>
+					<td>
+						<label>
+							<input type="checkbox" name="wsw_settings[myaccount_show_icon]" value="yes" <?php checked( $settings['myaccount_show_icon'], 'yes' ); ?> />
+							<?php esc_html_e( 'Add a dashicon next to the Wallet menu label (uncheck if your theme provides its own icons).', 'wp-simple-wallet' ); ?>
+						</label>
+						<p class="description">
+							<?php
+							printf(
+								/* translators: %s: link to dashicons reference */
+								esc_html__( 'Dashicon glyph code (default: %s). Find more codes at the Dashicons reference.', 'wp-simple-wallet' ),
+								'<code>\f18e</code>'
+							);
+							?>
+							<br/>
+							<input type="text" name="wsw_settings[myaccount_icon_glyph]" value="<?php echo esc_attr( $settings['myaccount_icon_glyph'] ); ?>" class="regular-text" placeholder="\f18e" />
+						</p>
+					</td>
 				</tr>
 				<tr>
 					<th scope="row"><?php esc_html_e( 'Remove data on uninstall', 'wp-simple-wallet' ); ?></th>

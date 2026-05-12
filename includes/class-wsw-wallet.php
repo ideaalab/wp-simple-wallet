@@ -30,6 +30,9 @@ class WSW_Wallet {
 			'cleanup_on_uninstall' => 'no',
 			'gateway_title'        => __( 'Pay with wallet', 'wp-simple-wallet' ),
 			'gateway_description'  => __( 'Use your wallet balance to pay for this order.', 'wp-simple-wallet' ),
+			'myaccount_position'   => 'dashboard',
+			'myaccount_show_icon'  => 'yes',
+			'myaccount_icon_glyph' => '\f18e',
 		);
 		return wp_parse_args( $settings, $defaults );
 	}
