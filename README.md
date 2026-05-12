@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.0.0 |
+| **Version** | 1.1.0 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -63,7 +63,101 @@ Quick functional walkthrough on a Woo store with at least one product:
 7. **HPOS.** Enable *WooCommerce → Settings → Advanced → Features → High-Performance Order Storage* and repeat steps 4–5. Orders are stored in the HPOS tables; wallet flow keeps working.
 8. **Export.** From **WooCommerce → Wallets → Transactions** click *Export CSV*.
 
+## Developer API (for other plugins)
+
+WP Simple Wallet exposes a small procedural API so other plugins (royalty
+systems, top-ups, point conversions, ticketing, etc.) can move money in and
+out of customer wallets in one line.
+
+All API functions are loaded when the plugin boots. Guard your calls with
+`function_exists()` so your code keeps working if the wallet is disabled:
+
+```php
+if ( ! function_exists( 'wsw_credit' ) ) {
+    return; // WP Simple Wallet is not active.
+}
+```
+
+### Functions
+
+| Function | Returns |
+|---|---|
+| `wsw_is_active( $user_id )` | `bool` |
+| `wsw_set_active( $user_id, $active = true )` | `void` |
+| `wsw_get_balance( $user_id )` | `float` |
+| `wsw_credit( $user_id, $amount, $note = '', $args = [] )` | `int\|WP_Error` (tx id) |
+| `wsw_debit( $user_id, $amount, $note = '', $args = [] )` | `int\|WP_Error` (tx id) |
+| `wsw_can_debit( $user_id, $amount, $args = [] )` | `true\|WP_Error` |
+| `wsw_get_transactions( $args = [] )` | `array` of rows |
+| `wsw_get_settings()` | `array` |
+
+`$args` supports:
+
+| Key | Type | Notes |
+|---|---|---|
+| `type` | string | Custom transaction type slug (max 64 chars). Default: `credit` / `debit`. Use stable identifiers like `royalty_payout`, `relay_topup`. |
+| `source` | string | Slug of the calling plugin, e.g. `wp-royalties`. Stored in a dedicated column and shown in the admin transactions table. |
+| `order_id` | int | Related WooCommerce order, if any. |
+| `created_by` | int | User to record as the author. Defaults to current user. |
+| `force` | bool | Bypass the "max negative balance" cap on debits. Use sparingly. |
+
+### Example: pay royalties into the wallet from `wp-royalties`
+
+```php
+add_action( 'wpr_royalty_due', function ( $user_id, $amount, $period ) {
+    if ( ! function_exists( 'wsw_credit' ) || ! wsw_is_active( $user_id ) ) {
+        return;
+    }
+
+    $tx = wsw_credit(
+        $user_id,
+        $amount,
+        sprintf( 'Royalties for %s', $period ),
+        array(
+            'type'   => 'royalty_payout',
+            'source' => 'wp-royalties',
+        )
+    );
+
+    if ( is_wp_error( $tx ) ) {
+        error_log( 'Royalty credit failed: ' . $tx->get_error_message() );
+    }
+}, 10, 3 );
+```
+
+### Example: charge a Relay extra against the wallet
+
+```php
+$result = wsw_debit(
+    $user_id,
+    9.90,
+    'Relay Express upgrade (order #1234)',
+    array(
+        'type'     => 'relay_extra',
+        'source'   => 'wp-relay-extras',
+        'order_id' => 1234,
+    )
+);
+
+if ( is_wp_error( $result ) ) {
+    // Show the error to the customer: insufficient balance, overdraft cap, etc.
+    wc_add_notice( $result->get_error_message(), 'error' );
+}
+```
+
+### Hooks
+
+- `do_action( 'wsw_balance_changed', $user_id, $delta, $balance_after, $type, $tx_id, $args )` — fires after every balance change.
+- `apply_filters( 'wsw_can_debit', $result, $user_id, $amount, $args )` — let another plugin veto or approve a debit.
+- `apply_filters( 'wsw_transaction_type_label', $label, $type )` — provide human labels for your custom types.
+
 ## Changelog
+
+### 1.1.0
+- New procedural API for other plugins: `wsw_credit()`, `wsw_debit()`, `wsw_can_debit()`, `wsw_get_balance()`, `wsw_get_transactions()`, `wsw_is_active()`, `wsw_set_active()`, `wsw_get_settings()`.
+- New `source` column on the transactions table to track which plugin originated each movement (shown in the admin list and CSV export).
+- New filters: `wsw_can_debit`, `wsw_transaction_type_label`. New `args` payload on `wsw_balance_changed`.
+- Custom transaction types supported (up to 64 chars). DB upgrade runs automatically on plugin load.
 
 ### 1.0.0
 - Initial release.

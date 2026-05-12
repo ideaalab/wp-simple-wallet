@@ -293,6 +293,7 @@ class WSW_Admin {
 					<th><?php esc_html_e( 'Date', 'wp-simple-wallet' ); ?></th>
 					<th><?php esc_html_e( 'User', 'wp-simple-wallet' ); ?></th>
 					<th><?php esc_html_e( 'Type', 'wp-simple-wallet' ); ?></th>
+					<th><?php esc_html_e( 'Source', 'wp-simple-wallet' ); ?></th>
 					<th><?php esc_html_e( 'Amount', 'wp-simple-wallet' ); ?></th>
 					<th><?php esc_html_e( 'Balance after', 'wp-simple-wallet' ); ?></th>
 					<th><?php esc_html_e( 'Order', 'wp-simple-wallet' ); ?></th>
@@ -301,7 +302,7 @@ class WSW_Admin {
 			</thead>
 			<tbody>
 				<?php if ( empty( $txs ) ) : ?>
-					<tr><td colspan="7"><?php esc_html_e( 'No transactions.', 'wp-simple-wallet' ); ?></td></tr>
+					<tr><td colspan="8"><?php esc_html_e( 'No transactions.', 'wp-simple-wallet' ); ?></td></tr>
 				<?php else : ?>
 					<?php foreach ( $txs as $tx ) :
 						$u       = get_user_by( 'id', $tx->user_id );
@@ -326,6 +327,7 @@ class WSW_Admin {
 								<?php endif; ?>
 							</td>
 							<td><?php echo esc_html( WSW_Wallet::type_label( $tx->type ) ); ?></td>
+							<td><code><?php echo esc_html( $tx->source ? $tx->source : '—' ); ?></code></td>
 							<td><span class="<?php echo esc_attr( $cls ); ?>"><?php echo wp_kses_post( wc_price( $amount ) ); ?></span></td>
 							<td><?php echo wp_kses_post( wc_price( (float) $tx->balance_after ) ); ?></td>
 							<td><?php echo wp_kses_post( $order_link ); ?></td>
@@ -435,7 +437,7 @@ class WSW_Admin {
 		header( 'Content-Disposition: attachment; filename=wsw-transactions-' . gmdate( 'Y-m-d-His' ) . '.csv' );
 
 		$out = fopen( 'php://output', 'w' );
-		fputcsv( $out, array( 'id', 'created_at', 'user_id', 'user_login', 'user_email', 'type', 'amount', 'balance_after', 'order_id', 'note', 'created_by' ) );
+		fputcsv( $out, array( 'id', 'created_at', 'user_id', 'user_login', 'user_email', 'type', 'source', 'amount', 'balance_after', 'order_id', 'note', 'created_by' ) );
 		foreach ( $txs as $tx ) {
 			$u = get_user_by( 'id', $tx->user_id );
 			fputcsv(
@@ -447,6 +449,7 @@ class WSW_Admin {
 					$u ? $u->user_login : '',
 					$u ? $u->user_email : '',
 					$tx->type,
+					$tx->source,
 					$tx->amount,
 					$tx->balance_after,
 					$tx->order_id,

@@ -9,16 +9,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WSW_Install {
 
-	const DB_VERSION = '1.0.0';
+	const DB_VERSION = '1.1.0';
 
 	public static function activate() {
 		self::create_tables();
 		self::create_role();
 		self::set_default_options();
+		update_option( 'wsw_db_version', self::DB_VERSION );
 	}
 
 	public static function deactivate() {
 		// Intentionally empty: do not delete any data on deactivation.
+	}
+
+	/**
+	 * Runs on plugins_loaded; upgrades the DB schema if needed.
+	 */
+	public static function maybe_upgrade() {
+		$installed = get_option( 'wsw_db_version' );
+		if ( $installed !== self::DB_VERSION ) {
+			self::create_tables();
+			update_option( 'wsw_db_version', self::DB_VERSION );
+		}
 	}
 
 	public static function create_tables() {
@@ -33,7 +45,8 @@ class WSW_Install {
 			user_id BIGINT(20) UNSIGNED NOT NULL,
 			amount DECIMAL(18,4) NOT NULL DEFAULT 0,
 			balance_after DECIMAL(18,4) NOT NULL DEFAULT 0,
-			type VARCHAR(32) NOT NULL,
+			type VARCHAR(64) NOT NULL,
+			source VARCHAR(64) NULL,
 			note TEXT NULL,
 			order_id BIGINT(20) UNSIGNED NULL,
 			created_by BIGINT(20) UNSIGNED NULL,
@@ -42,12 +55,11 @@ class WSW_Install {
 			KEY user_id (user_id),
 			KEY order_id (order_id),
 			KEY type (type),
+			KEY source (source),
 			KEY created_at (created_at)
 		) {$charset_collate};";
 
 		dbDelta( $sql );
-
-		update_option( 'wsw_db_version', self::DB_VERSION );
 	}
 
 	public static function create_role() {

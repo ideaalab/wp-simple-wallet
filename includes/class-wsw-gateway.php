@@ -101,7 +101,16 @@ class WSW_Gateway extends WC_Payment_Gateway {
 			$order->get_id()
 		);
 
-		$tx = WSW_Wallet::adjust( $user_id, -$amount, WSW_Wallet::TYPE_PAYMENT, $note, $order->get_id() );
+		$tx = WSW_Wallet::adjust(
+			$user_id,
+			-$amount,
+			WSW_Wallet::TYPE_PAYMENT,
+			$note,
+			array(
+				'order_id' => $order->get_id(),
+				'source'   => 'wp-simple-wallet',
+			)
+		);
 		if ( is_wp_error( $tx ) ) {
 			wc_add_notice( $tx->get_error_message(), 'error' );
 			return array( 'result' => 'failure' );

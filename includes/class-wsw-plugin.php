@@ -75,7 +75,17 @@ class WSW_Plugin {
 			$refund_id
 		);
 
-		$result = WSW_Wallet::adjust( $user_id, $amount, WSW_Wallet::TYPE_REFUND, $note, $order_id );
+		$result = WSW_Wallet::adjust(
+			$user_id,
+			$amount,
+			WSW_Wallet::TYPE_REFUND,
+			$note,
+			array(
+				'order_id' => $order_id,
+				'source'   => 'wp-simple-wallet',
+				'force'    => true,
+			)
+		);
 
 		if ( ! is_wp_error( $result ) ) {
 			$refund->update_meta_data( '_wsw_credited', 1 );

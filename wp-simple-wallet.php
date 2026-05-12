@@ -3,7 +3,7 @@
  * Plugin Name: WP Simple Wallet
  * Plugin URI: https://github.com/ideaalab/wp-simple-wallet
  * Description: Wallet balance for WooCommerce customers. Per-user activation, admin adjustments, transaction history, and a "Pay with wallet" gateway. HPOS compatible.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: IDEAA Lab
  * Author URI: https://github.com/ideaalab
  * Requires at least: 6.0
@@ -30,7 +30,7 @@ PucFactory::buildUpdateChecker(
 	'wp-simple-wallet'
 );
 
-define( 'WSW_VERSION', '1.0.0' );
+define( 'WSW_VERSION', '1.1.0' );
 define( 'WSW_PLUGIN_FILE', __FILE__ );
 define( 'WSW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WSW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -39,6 +39,7 @@ define( 'WSW_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 require_once WSW_PLUGIN_DIR . 'includes/class-wsw-install.php';
 require_once WSW_PLUGIN_DIR . 'includes/class-wsw-user.php';
 require_once WSW_PLUGIN_DIR . 'includes/class-wsw-wallet.php';
+require_once WSW_PLUGIN_DIR . 'includes/wsw-api.php';
 require_once WSW_PLUGIN_DIR . 'includes/class-wsw-plugin.php';
 
 register_activation_hook( __FILE__, array( 'WSW_Install', 'activate' ) );
@@ -71,6 +72,7 @@ add_action(
 
 		load_plugin_textdomain( 'wp-simple-wallet', false, dirname( WSW_PLUGIN_BASENAME ) . '/languages' );
 
+		WSW_Install::maybe_upgrade();
 		WSW_Plugin::instance();
 	}
 );
