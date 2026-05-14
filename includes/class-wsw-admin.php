@@ -349,6 +349,7 @@ class WSW_Admin {
 						<select name="direction">
 							<option value="credit"><?php esc_html_e( 'Add (credit)', 'wp-simple-wallet' ); ?></option>
 							<option value="debit"><?php esc_html_e( 'Subtract (debit)', 'wp-simple-wallet' ); ?></option>
+							<option value="set"><?php esc_html_e( 'Set balance to', 'wp-simple-wallet' ); ?></option>
 						</select>
 					</label>
 					&nbsp;
@@ -786,10 +787,32 @@ class WSW_Admin {
 		check_admin_referer( 'wsw_adjust_balance_' . $user_id, 'wsw_nonce' );
 
 		$direction = isset( $_POST['direction'] ) ? sanitize_key( wp_unslash( $_POST['direction'] ) ) : 'credit';
-		$amount    = isset( $_POST['amount'] ) ? abs( (float) wp_unslash( $_POST['amount'] ) ) : 0;
+		$amount    = isset( $_POST['amount'] ) ? (float) wp_unslash( $_POST['amount'] ) : 0;
 		$note      = isset( $_POST['note'] ) ? sanitize_text_field( wp_unslash( $_POST['note'] ) ) : '';
 
-		$delta = 'debit' === $direction ? -$amount : $amount;
+		if ( 'set' === $direction ) {
+			// "Set balance to X": calculate the delta from current balance.
+			$current = WSW_Wallet::get_balance( $user_id );
+			$delta   = $amount - $current;
+			if ( abs( $delta ) < 0.005 ) {
+				// Already at target — no adjustment needed.
+				wp_safe_redirect(
+					add_query_arg(
+						array(
+							'page'    => self::MENU_SLUG,
+							'tab'     => 'wallets',
+							'user_id' => $user_id,
+							'wsw_msg' => 'adjustment_applied',
+						),
+						admin_url( 'admin.php' )
+					)
+				);
+				exit;
+			}
+		} else {
+			$amount = abs( $amount );
+			$delta  = 'debit' === $direction ? -$amount : $amount;
+		}
 
 		$result = WSW_Wallet::adjust( $user_id, $delta, WSW_Wallet::TYPE_ADJUSTMENT, $note );
 

@@ -187,8 +187,9 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 ## Changelog
 
 ### 1.5.1
-- **Invoice fix**: the wallet no longer adds a fee line item to the order. Previously the negative fee distorted the tax base for invoicing plugins (e.g. base imponible = 52.56 instead of 64.56). Now the wallet amount is stored only in order meta (`_wsw_wallet_pending` / `_wsw_wallet_amount`). The order total remains at what the gateway was charged; line items (products, shipping, taxes) keep their full values so invoicing plugins that calculate from items produce correct invoices.
+- **Invoice fix**: the wallet no longer adds a fee line item to the order. Previously the negative fee distorted the tax base for invoicing plugins (e.g. base imponible = 8.00 instead of 20.00). After the wallet is debited, the order total is restored to the full pre-wallet amount so that invoicing plugins compute the correct tax base, IVA, and total. A "Paid from wallet" and "Charged to payment method" row are injected into the order totals (admin, emails, My Account) to document the payment split.
 - **Rename**: "Discounted from wallet" → "Paid from wallet" — the checkout review row and all references now reflect that the wallet is a payment method, not a discount.
+- **Set balance**: admin balance adjustments now support a "Set balance to" option that sets the wallet to an absolute value. Internally it calculates and records the credit or debit for the difference.
 
 ### 1.5.0
 - **Breaking (internal)**: the wallet no longer adds a negative cart fee. Instead it reduces the payment total via the `woocommerce_calculated_total` filter, which fires **after** all taxes have been computed and locked in. This means VAT/IVA is always preserved — the wallet is treated as a payment method, not a discount. Invoices now show the correct tax obligation regardless of how much the wallet covers.

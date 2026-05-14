@@ -13,10 +13,11 @@
  *   are computed) reduces only the payment total.
  * - A visual row is injected in the order review table to show the
  *   deduction.
- * - When the order is created, the wallet amount is stored in order
- *   meta only — NO fee line item is added. After payment succeeds and
+ * - NO fee line item is added to the order. After payment succeeds and
  *   the wallet is debited, the order total is restored to the full
- *   (pre-wallet) amount so invoicing plugins see the correct base.
+ *   (pre-wallet) amount so invoicing plugins see the correct tax base.
+ * - A "Paid from wallet" row is injected into the order totals display
+ *   (admin, emails, My Account) to document the payment split.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -53,6 +54,9 @@ class WSW_Checkout {
 		// Some gateways transition status without calling payment_complete().
 		add_action( 'woocommerce_order_status_processing', array( $this, 'process_wallet_debit' ) );
 		add_action( 'woocommerce_order_status_completed', array( $this, 'process_wallet_debit' ) );
+
+		// Show "Paid from wallet" row in order totals (admin, emails, My Account).
+		add_filter( 'woocommerce_get_order_item_totals', array( $this, 'order_totals_wallet_row' ), 10, 2 );
 
 		// Enqueue checkout JS/CSS once.
 		add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue_scripts' ) );
@@ -169,6 +173,49 @@ class WSW_Checkout {
 			</td>
 		</tr>
 		<?php
+	}
+
+	/* ------------------------------------------------------------------
+	 * Order totals (admin, emails, My Account order view)
+	 * ----------------------------------------------------------------*/
+
+	/**
+	 * Inject a "Paid from wallet" row into the order totals table.
+	 *
+	 * This row is purely informational — it does not change any stored
+	 * value. It appears right before the "Total" line in admin, customer
+	 * emails, and the My Account order detail page.
+	 *
+	 * @param array    $rows  Existing total rows.
+	 * @param WC_Order $order The order.
+	 * @return array
+	 */
+	public function order_totals_wallet_row( $rows, $order ) {
+		$wallet_amount = floatval( $order->get_meta( '_wsw_wallet_amount' ) );
+		if ( $wallet_amount <= 0 ) {
+			return $rows;
+		}
+
+		$gateway_charged = round( floatval( $order->get_total( 'edit' ) ) - $wallet_amount, wc_get_price_decimals() );
+
+		// Build new rows array, injecting wallet info before 'order_total'.
+		$new_rows = array();
+		foreach ( $rows as $key => $row ) {
+			if ( 'order_total' === $key ) {
+				$new_rows['wsw_wallet'] = array(
+					'label' => __( 'Paid from wallet:', 'wp-simple-wallet' ),
+					'value' => wp_kses_post( wc_price( $wallet_amount ) ),
+				);
+				if ( $gateway_charged > 0 ) {
+					$new_rows['wsw_gateway'] = array(
+						'label' => __( 'Charged to payment method:', 'wp-simple-wallet' ),
+						'value' => wp_kses_post( wc_price( $gateway_charged ) ),
+					);
+				}
+			}
+			$new_rows[ $key ] = $row;
+		}
+		return $new_rows;
 	}
 
 	/* ------------------------------------------------------------------
@@ -408,11 +455,10 @@ class WSW_Checkout {
 	 * Uses _wsw_wallet_pending meta (set by store_wallet_intent) so it
 	 * works even when the WC session is gone (PayPal IPN, async gateways).
 	 *
-	 * The order total is NOT modified — it stays at whatever the gateway
-	 * was charged. The wallet portion is recorded in _wsw_wallet_amount
-	 * meta for refund/cancellation logic. Line items (products, shipping,
-	 * taxes) keep their full values, so invoicing plugins that calculate
-	 * the tax base from items will produce correct invoices.
+	 * After a successful debit the order total is restored to the full
+	 * (pre-wallet) amount so that invoicing plugins see the real sale
+	 * value and compute the correct tax base. The wallet portion is
+	 * recorded in _wsw_wallet_amount meta for refund/cancellation logic.
 	 *
 	 * @param int $order_id
 	 */
@@ -457,6 +503,12 @@ class WSW_Checkout {
 		if ( ! is_wp_error( $tx ) ) {
 			$order->update_meta_data( '_wsw_wallet_amount', $amount );
 			$order->delete_meta_data( '_wsw_wallet_pending' );
+
+			// Restore order total to the full (pre-wallet) amount so
+			// invoicing plugins compute the correct tax base.
+			$current_total = floatval( $order->get_total( 'edit' ) );
+			$order->set_total( round( $current_total + $amount, wc_get_price_decimals() ) );
+
 			$order->save();
 			$order->add_order_note(
 				sprintf(

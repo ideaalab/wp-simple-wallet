@@ -126,6 +126,15 @@ msgstr ""
 msgid "Subtract (debit)"
 msgstr ""
 
+msgid "Set balance to"
+msgstr ""
+
+msgid "Paid from wallet:"
+msgstr ""
+
+msgid "Charged to payment method:"
+msgstr ""
+
 msgid "Amount"
 msgstr ""
 
