@@ -57,6 +57,9 @@ class WSW_Checkout {
 		// Show "Paid from wallet" row in order totals (admin, emails, My Account).
 		add_filter( 'woocommerce_get_order_item_totals', array( $this, 'order_totals_wallet_row' ), 10, 2 );
 
+		// Show wallet payment info in the admin order page.
+		add_action( 'woocommerce_admin_order_data_after_billing_address', array( $this, 'admin_order_wallet_field' ) );
+
 		// Enqueue checkout JS/CSS once.
 		add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue_scripts' ) );
 
@@ -222,6 +225,24 @@ class WSW_Checkout {
 			$new_rows[ $key ] = $row;
 		}
 		return $new_rows;
+	}
+
+	/**
+	 * Display wallet payment info in the admin order edit screen.
+	 *
+	 * @param WC_Order $order
+	 */
+	public function admin_order_wallet_field( $order ) {
+		$wallet_amount = floatval( $order->get_meta( '_wsw_wallet_amount' ) );
+		if ( $wallet_amount <= 0 ) {
+			return;
+		}
+		?>
+		<p class="form-field form-field-wide">
+			<strong><?php esc_html_e( 'Paid from wallet:', 'wp-simple-wallet' ); ?></strong>
+			<?php echo wp_kses_post( wc_price( $wallet_amount ) ); ?>
+		</p>
+		<?php
 	}
 
 	/* ------------------------------------------------------------------
@@ -480,13 +501,30 @@ class WSW_Checkout {
 		if ( ! is_wp_error( $tx ) ) {
 			$order->update_meta_data( '_wsw_wallet_amount', $amount );
 			$order->save();
-			$order->add_order_note(
-				sprintf(
-					/* translators: %s: formatted price */
-					__( 'Wallet: %s applied from customer balance.', 'wp-simple-wallet' ),
-					wc_price( $amount )
-				)
-			);
+
+			// Build a detailed order note with payment breakdown.
+			$gateway_amount = floatval( $order->get_total( 'edit' ) );
+			$gateway_title  = $order->get_payment_method_title();
+
+			if ( $gateway_amount > 0 && $gateway_title ) {
+				$order->add_order_note(
+					sprintf(
+						/* translators: 1: wallet amount, 2: gateway amount, 3: payment method name */
+						__( 'Wallet: %1$s paid from wallet. %2$s pending via %3$s.', 'wp-simple-wallet' ),
+						wc_price( $amount ),
+						wc_price( $gateway_amount ),
+						$gateway_title
+					)
+				);
+			} else {
+				$order->add_order_note(
+					sprintf(
+						/* translators: %s: formatted price */
+						__( 'Wallet: %s — full order paid from wallet.', 'wp-simple-wallet' ),
+						wc_price( $amount )
+					)
+				);
+			}
 		} else {
 			// Store as pending — restore_order_total() will retry on status change.
 			$order->update_meta_data( '_wsw_wallet_pending', $amount );

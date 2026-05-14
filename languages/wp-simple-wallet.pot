@@ -240,7 +240,10 @@ msgstr ""
 msgid "Payment for order #%d"
 msgstr ""
 
-msgid "Wallet: %s applied from customer balance."
+msgid "Wallet: %1$s paid from wallet. %2$s pending via %3$s."
+msgstr ""
+
+msgid "Wallet: %s — full order paid from wallet."
 msgstr ""
 
 msgid "Wallet debit failed: %s"
