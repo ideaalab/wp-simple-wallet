@@ -1,11 +1,11 @@
 # WP Simple Wallet
 
-Wallet balance for WooCommerce customers. Per-user activation, admin adjustments, transaction history, and a "Pay with wallet" gateway. HPOS compatible.
+Wallet balance for WooCommerce customers. Per-user activation, admin adjustments, transaction history, and checkout wallet balance. HPOS compatible.
 
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.3.3 |
+| **Version** | 1.4.0 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -25,10 +25,12 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
   - Adjust balance manually (credit or debit) with a free-form note.
   - Browse the full transaction history and **export it to CSV**.
 - Frontend **Wallet** tab in *My Account* showing the customer's balance and movements (only visible if the wallet is active).
-- **"Pay with wallet"** WooCommerce payment gateway:
-  - Only shown to logged-in users with an active wallet.
-  - Debits the order total from the balance, respecting the overdraft setting.
-  - Order refunds automatically credit the amount back to the wallet.
+- **Wallet balance at checkout** (gift-card style box):
+  - Appears above payment methods when the customer has wallet balance (or overdraft is allowed).
+  - Checkbox applies the full available balance as a discount. If it covers the entire order, no other payment method is needed.
+  - If the balance only covers part of the order, the remaining total is charged to whatever payment method the customer selects (Stripe, PayPal, etc.).
+  - Order cancellations automatically restore the wallet amount. Refunds on full-wallet orders are credited back automatically.
+  - Respects the per-user overdraft policy: customers with allowed negative balance can apply more than their current balance.
 - HPOS (Custom Order Tables) compatible.
 - OOP, internationalized (`.pot` provided), no data deleted on deactivation. Cleanup on uninstall is opt-in.
 
@@ -57,11 +59,13 @@ Quick functional walkthrough on a Woo store with at least one product:
 1. **Enable a wallet.** Edit a customer in `wp-admin`, scroll to *WP Simple Wallet* and tick *Enable wallet for this user*. Save.
 2. **Top up the balance.** Go to **WooCommerce → Wallets**, click *Manage* on that user, add a credit of e.g. 100 with note "initial top-up".
 3. **Verify the customer view.** Log in as the customer and visit *My account → Wallet*. You should see the balance and the credit movement.
-4. **Pay an order.** Add a product to cart and go to checkout. The *Pay with wallet* method should be available. Place the order; the balance should drop by the order total and a new transaction of type *Order payment* should appear, linked to the order.
-5. **Refund.** In `wp-admin`, open the order and issue a refund (any amount). The amount should be credited back to the wallet automatically. Check the customer's *Wallet* tab and the admin transactions list.
-6. **Negative balance.** In **Settings**, enable *Allow negative balance* and set a *Max negative balance* (e.g. 50). Place an order that exceeds the balance by less than 50: it should succeed; one that exceeds by more should be rejected.
-7. **HPOS.** Enable *WooCommerce → Settings → Advanced → Features → High-Performance Order Storage* and repeat steps 4–5. Orders are stored in the HPOS tables; wallet flow keeps working.
-8. **Export.** From **WooCommerce → Wallets → Transactions** click *Export CSV*.
+4. **Full wallet payment.** Add a product to cart (price ≤ 100) and go to checkout. A *Wallet balance* box should appear with a checkbox. Check it; the order total should drop to zero and payment methods should disappear. Place the order; the balance should drop and a new *Order payment* transaction should appear.
+5. **Split payment.** Add a product that costs more than the wallet balance. Check the wallet box; the total should drop by the balance amount. Select another payment method for the remainder and place the order. Both the wallet debit and the gateway charge should succeed.
+6. **Refund (full wallet).** Open a full-wallet order in `wp-admin` and issue a refund. The wallet should be credited back automatically.
+7. **Cancel.** Place an order using the wallet, then change the order status to *Cancelled* in `wp-admin`. The wallet amount should be restored automatically.
+8. **Negative balance.** In **Settings**, enable *Allow negative balance* and set a *Max negative balance* (e.g. 50). Set the customer balance to 0. Go to checkout; the wallet box should appear. Check it; the full order total should be applied from wallet. Place an order that exceeds the cap: it should be rejected at validation.
+9. **HPOS.** Enable *WooCommerce → Settings → Advanced → Features → High-Performance Order Storage* and repeat steps 4–6. Orders are stored in the HPOS tables; wallet flow keeps working.
+10. **Export.** From **WooCommerce → Wallets → Transactions** click *Export CSV*.
 
 ## Developer API (for other plugins)
 
@@ -156,8 +160,8 @@ if ( is_wp_error( $result ) ) {
 The wallet API is **PHP-level only** — there are no HTTP, REST or AJAX endpoints that allow third parties to credit or debit balances. A remote attacker cannot call `wsw_credit()` or `wsw_debit()` over the network. Server-side, the surface is:
 
 - **Admin UI**: every action checks `current_user_can( 'manage_woocommerce' )` plus a WordPress nonce. This includes balance adjustments, CSV export, enabling/removing wallets, the user-search AJAX endpoint, and the user profile checkbox.
-- **Payment gateway**: only debits for the logged-in customer at checkout, with the standard WooCommerce nonces. Respects the overdraft policy and validates `is_available()`.
-- **Refunds**: credited automatically from the `woocommerce_order_refunded` action, with double-credit protection via order meta.
+- **Checkout**: the wallet toggle AJAX checks a nonce. The wallet debit is validated before order creation (`woocommerce_after_checkout_validation`) and only executed after payment succeeds (`woocommerce_payment_complete`). The intent is stored in order meta so off-site gateways (PayPal, 3-D Secure) cannot be exploited by session manipulation.
+- **Refunds**: credited automatically from the `woocommerce_order_refunded` action (full-wallet orders only), with double-credit protection via order meta. Order cancellations also restore the wallet amount.
 - **Customer-facing pages**: read-only. The "Wallet" tab in *My Account* never accepts input that changes the balance.
 
 ### What about other plugins?
@@ -181,6 +185,16 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.4.0
+- **Breaking**: the "Pay with wallet" WooCommerce payment gateway has been **replaced** by a gift-card-style wallet box that appears above payment methods at checkout. Customers check a box to apply their wallet balance; the remaining total (if any) is paid with any other gateway (Stripe, PayPal, bank transfer, etc.). If the wallet covers the full order, no payment method is needed.
+- **Split payments**: customers can now use *part* of their wallet balance and pay the rest with a different method — the main feature gap the old gateway had.
+- **Overdraft at checkout**: customers with allowed negative balance see the wallet box even when their balance is zero or negative, and can apply credit up to their overdraft limit.
+- **Order cancellation**: wallet amounts are automatically restored when an order is cancelled.
+- **Validation**: the wallet amount is re-validated right before the order is created, preventing race conditions (e.g. balance changed between page load and submit).
+- **Async-gateway safe**: wallet intent is stored in order meta before payment, so off-site gateways (PayPal redirect, Stripe 3-D Secure) work correctly even when the WC session is lost.
+- **Refund policy**: for full-wallet orders (no gateway charged) refunds are auto-credited. For split orders, the gateway handles its refund; the admin adjusts the wallet portion manually if needed.
+- Removed: gateway title/description settings (no longer applicable).
 
 ### 1.3.3
 - **Admin UX**: separate settings from actions on the user detail page. Overdraft limits sit at the top as a regular settings form (saved with *Save limits*); the balance adjustment is now wrapped in a visually distinct action card with its own *Apply adjustment* button. The 1.3.2 unified form was confusing because an adjustment is a one-shot transaction, not a setting.

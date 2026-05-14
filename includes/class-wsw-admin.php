@@ -62,8 +62,6 @@ class WSW_Admin {
 		$out['allow_negative']       = isset( $input['allow_negative'] ) && 'yes' === $input['allow_negative'] ? 'yes' : 'no';
 		$out['max_negative']         = isset( $input['max_negative'] ) ? max( 0, (float) $input['max_negative'] ) : 0;
 		$out['cleanup_on_uninstall'] = isset( $input['cleanup_on_uninstall'] ) && 'yes' === $input['cleanup_on_uninstall'] ? 'yes' : 'no';
-		$out['gateway_title']        = isset( $input['gateway_title'] ) ? sanitize_text_field( wp_unslash( $input['gateway_title'] ) ) : $current['gateway_title'];
-		$out['gateway_description']  = isset( $input['gateway_description'] ) ? sanitize_textarea_field( wp_unslash( $input['gateway_description'] ) ) : $current['gateway_description'];
 
 		$out['myaccount_position']   = isset( $input['myaccount_position'] ) ? sanitize_text_field( wp_unslash( $input['myaccount_position'] ) ) : $current['myaccount_position'];
 		$out['myaccount_show_icon']  = isset( $input['myaccount_show_icon'] ) && 'yes' === $input['myaccount_show_icon'] ? 'yes' : 'no';
@@ -506,23 +504,6 @@ class WSW_Admin {
 					<td>
 						<input type="number" step="0.01" min="0" name="wsw_settings[max_negative]" value="<?php echo esc_attr( $settings['max_negative'] ); ?>" />
 						<p class="description"><?php esc_html_e( '0 = unlimited. Only applies when negative balance is allowed.', 'wp-simple-wallet' ); ?></p>
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><?php esc_html_e( 'Gateway title', 'wp-simple-wallet' ); ?></th>
-					<td><input type="text" class="regular-text" name="wsw_settings[gateway_title]" value="<?php echo esc_attr( $settings['gateway_title'] ); ?>" /></td>
-				</tr>
-				<tr>
-					<th scope="row"><?php esc_html_e( 'Gateway description', 'wp-simple-wallet' ); ?></th>
-					<td>
-						<textarea class="large-text" rows="3" name="wsw_settings[gateway_description]"><?php echo esc_textarea( $settings['gateway_description'] ); ?></textarea>
-						<p class="description">
-							<?php
-							echo wp_kses_post(
-								__( 'Shown to customers under the payment method in checkout. Available placeholder: <code>{balance}</code> — replaced with the customer\'s current wallet balance.', 'wp-simple-wallet' )
-							);
-							?>
-						</p>
 					</td>
 				</tr>
 				<tr>

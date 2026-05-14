@@ -2,9 +2,9 @@
 # This file is distributed under the GPL-2.0-or-later license.
 msgid ""
 msgstr ""
-"Project-Id-Version: WP Simple Wallet 1.3.3\n"
+"Project-Id-Version: WP Simple Wallet 1.4.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ideaalab/wp-simple-wallet/issues\n"
-"POT-Creation-Date: 2026-05-11 00:00+0000\n"
+"POT-Creation-Date: 2026-05-14 00:00+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,12 +19,6 @@ msgid "WP Simple Wallet requires WooCommerce to be installed and active."
 msgstr ""
 
 msgid "Wallet Customer"
-msgstr ""
-
-msgid "Pay with wallet"
-msgstr ""
-
-msgid "Use your wallet balance to pay for this order."
 msgstr ""
 
 msgid "Amount must be greater than zero."
@@ -61,6 +55,12 @@ msgid "Refund credited back to wallet (order #%1$d, refund #%2$d)."
 msgstr ""
 
 msgid "WP Simple Wallet: refunded %s back to the customer wallet."
+msgstr ""
+
+msgid "Order #%d cancelled — wallet balance restored."
+msgstr ""
+
+msgid "WP Simple Wallet: restored %s to the customer wallet (order cancelled)."
 msgstr ""
 
 msgid "Wallets"
@@ -177,12 +177,6 @@ msgstr ""
 msgid "0 = unlimited. Only applies when negative balance is allowed."
 msgstr ""
 
-msgid "Gateway title"
-msgstr ""
-
-msgid "Gateway description"
-msgstr ""
-
 msgid "Remove data on uninstall"
 msgstr ""
 
@@ -216,44 +210,32 @@ msgstr ""
 msgid "You have no wallet movements yet."
 msgstr ""
 
-msgid "Lets customers with an active wallet pay using their balance."
+msgid "Apply wallet balance to this order"
 msgstr ""
 
-msgid "Enable/Disable"
+msgid "Apply wallet balance to this order (%s)"
 msgstr ""
 
-msgid "Enable Wallet payments"
-msgstr ""
-
-msgid "Title"
-msgstr ""
-
-msgid "Shown to customers during checkout."
-msgstr ""
-
-msgid "Description"
-msgstr ""
-
-msgid "Shown to customers below the payment method."
-msgstr ""
-
-msgid "Order not found."
-msgstr ""
-
-msgid "Wallet is not available for this user."
+msgid "Wallet is not available for your account."
 msgstr ""
 
 msgid "Payment for order #%d"
 msgstr ""
 
-msgid "Paid with wallet (%s)."
+msgid "Wallet: %s applied from customer balance."
 msgstr ""
 
-msgid "Order has no user."
+msgid "Wallet debit failed: %s"
 msgstr ""
 
 msgid "Refund amount must be positive."
 msgstr ""
 
 msgid "Refund for order #%d"
+msgstr ""
+
+msgid "My Account menu position"
+msgstr ""
+
+msgid "Show menu icon"
 msgstr ""
