@@ -2,15 +2,20 @@
 /**
  * Checkout integration: wallet balance box (gift-card style).
  *
- * Replaces the old WC payment gateway. Applies the wallet balance as a
- * negative fee on the cart so the remaining total is charged to whatever
- * payment method the customer selects. If the wallet covers the full
- * amount the order processes as a zero-total (no gateway needed).
+ * The wallet is a PAYMENT METHOD, not a discount. Taxes (VAT/IVA) on
+ * the order are never affected by the wallet — just like paying with
+ * PayPal or a bank transfer does not change the tax on the invoice.
  *
- * The box is rendered via woocommerce_review_order_before_payment on the
- * initial page load. Since that action does NOT fire during WC AJAX
- * updates (wp_doing_ajax check in checkout/payment.php), the box is kept
- * in sync via the woocommerce_update_order_review_fragments filter.
+ * Architecture:
+ * - NO negative cart fee is added (fees fire before taxes are final in
+ *   some WC versions and can distort the tax calculation).
+ * - Instead, woocommerce_calculated_total (which fires AFTER all taxes
+ *   are computed) reduces only the payment total.
+ * - A visual row is injected in the order review table to show the
+ *   deduction.
+ * - When the order is created, a non-taxable fee line item is added to
+ *   the order so line totals balance and invoicing plugins can pick it
+ *   up — but taxes have already been locked in by WC at that point.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -26,8 +31,11 @@ class WSW_Checkout {
 		// Keep the box updated during AJAX checkout refreshes.
 		add_filter( 'woocommerce_update_order_review_fragments', array( $this, 'wallet_fragment' ) );
 
-		// Apply wallet fee during cart calculation.
-		add_action( 'woocommerce_cart_calculate_fees', array( $this, 'apply_wallet_fee' ) );
+		// Reduce the cart total AFTER taxes are fully calculated.
+		add_filter( 'woocommerce_calculated_total', array( $this, 'adjust_cart_total' ), 10, 2 );
+
+		// Show the wallet deduction row in the order review table.
+		add_action( 'woocommerce_review_order_before_order_total', array( $this, 'wallet_order_review_row' ) );
 
 		// AJAX: toggle wallet on/off.
 		add_action( 'wp_ajax_wsw_toggle_wallet', array( $this, 'ajax_toggle' ) );
@@ -95,53 +103,71 @@ class WSW_Checkout {
 		return self::get_max_applicable( $user_id ) > 0;
 	}
 
+	/* ------------------------------------------------------------------
+	 * Cart total adjustment
+	 * ----------------------------------------------------------------*/
+
 	/**
-	 * Calculate the cart total (incl. tax) before the wallet fee.
+	 * Reduce the cart total by the wallet amount.
 	 *
-	 * Cart-level getters like get_cart_contents_tax() may return stale
-	 * values during woocommerce_cart_calculate_fees on some WC versions.
-	 * We read item-level line_total / line_tax instead — these are
-	 * written to the cart contents array by
-	 * WC_Cart_Totals::calculate_item_totals() before fee calculation
-	 * and are always current. For shipping tax we try the cart getter
-	 * first and fall back to the chosen rate's tax data.
+	 * Hooked into woocommerce_calculated_total which fires AFTER item
+	 * taxes, shipping taxes and fee taxes have all been calculated and
+	 * set on the cart. The $total received already includes every tax.
+	 * We simply subtract the wallet amount — taxes stay untouched.
 	 *
-	 * @param WC_Cart $cart
-	 * @return float
+	 * @param float   $total Full cart total incl. tax.
+	 * @param WC_Cart $cart  The cart object.
+	 * @return float Adjusted total (>= 0).
 	 */
-	private function get_pre_wallet_total( $cart ) {
-		// --- Items (incl tax) -------------------------------------------
-		$total = 0;
-		foreach ( $cart->get_cart() as $item ) {
-			$total += floatval( $item['line_total'] ?? 0 );
-			$total += floatval( $item['line_tax'] ?? 0 );
+	public function adjust_cart_total( $total, $cart ) {
+		if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
+			return $total;
+		}
+		if ( ! WC()->session || ! WC()->session->get( 'wsw_apply_wallet' ) ) {
+			return $total;
 		}
 
-		// --- Shipping (incl tax) ----------------------------------------
-		$shipping     = floatval( $cart->get_shipping_total() );
-		$shipping_tax = floatval( $cart->get_shipping_tax() );
-
-		// Fallback: read tax from the chosen shipping rate objects.
-		if ( $shipping_tax <= 0 && $shipping > 0 && WC()->session ) {
-			$chosen   = WC()->session->get( 'chosen_shipping_methods', array() );
-			$packages = WC()->shipping() ? WC()->shipping()->get_packages() : array();
-			foreach ( $packages as $i => $package ) {
-				if ( isset( $chosen[ $i ], $package['rates'][ $chosen[ $i ] ] ) ) {
-					$shipping_tax += array_sum( array_map( 'floatval', $package['rates'][ $chosen[ $i ] ]->taxes ) );
-				}
-			}
-		}
-		$total += $shipping + $shipping_tax;
-
-		// --- Other fees from third-party plugins ------------------------
-		foreach ( $cart->get_fees() as $fee ) {
-			$total += floatval( $fee->total );
-			if ( ! empty( $fee->tax ) ) {
-				$total += floatval( $fee->tax );
-			}
+		$user_id = get_current_user_id();
+		if ( ! $user_id || ! WSW_User::is_wallet_active( $user_id ) ) {
+			WC()->session->set( 'wsw_apply_wallet', false );
+			return $total;
 		}
 
-		return max( 0.0, round( $total, wc_get_price_decimals() ) );
+		$max_applicable = self::get_max_applicable( $user_id );
+		$apply          = min( $max_applicable, $total );
+		$apply          = round( $apply, wc_get_price_decimals() );
+
+		if ( $apply <= 0 ) {
+			WC()->session->set( 'wsw_apply_amount', 0 );
+			return $total;
+		}
+
+		WC()->session->set( 'wsw_apply_amount', $apply );
+		return round( max( 0, $total - $apply ), wc_get_price_decimals() );
+	}
+
+	/**
+	 * Show the wallet deduction as a row inside the order review table.
+	 *
+	 * Hooked into woocommerce_review_order_before_order_total so the row
+	 * appears right above the "Total" line, after taxes.
+	 */
+	public function wallet_order_review_row() {
+		if ( ! WC()->session || ! WC()->session->get( 'wsw_apply_wallet' ) ) {
+			return;
+		}
+		$amount = floatval( WC()->session->get( 'wsw_apply_amount', 0 ) );
+		if ( $amount <= 0 ) {
+			return;
+		}
+		?>
+		<tr class="wsw-wallet-payment">
+			<th><?php esc_html_e( 'Discounted from wallet', 'wp-simple-wallet' ); ?></th>
+			<td data-title="<?php esc_attr_e( 'Discounted from wallet', 'wp-simple-wallet' ); ?>">
+				<?php echo wp_kses_post( wc_price( -$amount ) ); ?>
+			</td>
+		</tr>
+		<?php
 	}
 
 	/* ------------------------------------------------------------------
@@ -163,25 +189,12 @@ class WSW_Checkout {
 
 		$user_id = get_current_user_id();
 		$balance = WSW_Wallet::get_balance( $user_id );
-
-		// Read applied state from the actual cart fee so the displayed
-		// amount always matches the fee line in the order review.
-		$applied = false;
-		$amount  = 0;
-		if ( WC()->cart ) {
-			$fee_name = __( 'Discounted from wallet', 'wp-simple-wallet' );
-			foreach ( WC()->cart->get_fees() as $fee ) {
-				if ( $fee->name === $fee_name ) {
-					$applied = true;
-					$amount  = abs( floatval( $fee->total ) );
-					break;
-				}
-			}
-		}
+		$applied = WC()->session ? (bool) WC()->session->get( 'wsw_apply_wallet', false ) : false;
+		$amount  = WC()->session ? floatval( WC()->session->get( 'wsw_apply_amount', 0 ) ) : 0;
 
 		ob_start();
 		?>
-		<div id="wsw-wallet-box" class="wsw-wallet-box<?php echo $applied ? ' wsw-wallet-applied' : ''; ?>">
+		<div id="wsw-wallet-box" class="wsw-wallet-box<?php echo $applied && $amount > 0 ? ' wsw-wallet-applied' : ''; ?>">
 			<div class="wsw-wallet-box-header">
 				<span class="wsw-wallet-label"><?php esc_html_e( 'Current wallet balance', 'wp-simple-wallet' ); ?></span>
 				<span class="wsw-wallet-amount<?php echo $balance < 0 ? ' wsw-negative' : ''; ?>">
@@ -320,47 +333,6 @@ class WSW_Checkout {
 	}
 
 	/* ------------------------------------------------------------------
-	 * Cart fee
-	 * ----------------------------------------------------------------*/
-
-	/**
-	 * Add a negative fee when the wallet checkbox is active.
-	 *
-	 * The fee is NOT taxable — it is a payment, not a discount. Product
-	 * taxes (IVA) are unaffected; the fee simply reduces the gross total
-	 * the customer has to pay via another method.
-	 *
-	 * @param WC_Cart $cart
-	 */
-	public function apply_wallet_fee( $cart ) {
-		if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
-			return;
-		}
-		if ( ! WC()->session || ! WC()->session->get( 'wsw_apply_wallet' ) ) {
-			return;
-		}
-
-		$user_id = get_current_user_id();
-		if ( ! $user_id || ! WSW_User::is_wallet_active( $user_id ) ) {
-			WC()->session->set( 'wsw_apply_wallet', false );
-			return;
-		}
-
-		$max_applicable = self::get_max_applicable( $user_id );
-		$cart_total     = $this->get_pre_wallet_total( $cart );
-		$apply          = min( $max_applicable, $cart_total );
-		$apply          = round( $apply, wc_get_price_decimals() );
-
-		if ( $apply <= 0 ) {
-			WC()->session->set( 'wsw_apply_amount', 0 );
-			return;
-		}
-
-		WC()->session->set( 'wsw_apply_amount', $apply );
-		$cart->add_fee( __( 'Discounted from wallet', 'wp-simple-wallet' ), -$apply, false );
-	}
-
-	/* ------------------------------------------------------------------
 	 * Order processing
 	 * ----------------------------------------------------------------*/
 
@@ -401,7 +373,10 @@ class WSW_Checkout {
 	 * Store the wallet intent in order meta right after the order is
 	 * created, before the payment gateway runs.
 	 *
-	 * This survives session loss (PayPal redirect, off-site gateways).
+	 * Also adds a non-taxable fee line item to the order so that line
+	 * totals balance (items + shipping + fee + tax = order total).
+	 * Taxes are already locked in by WC at this point and will not be
+	 * recalculated.
 	 *
 	 * @param int      $order_id
 	 * @param array    $posted_data
@@ -416,6 +391,13 @@ class WSW_Checkout {
 		if ( $amount <= 0 ) {
 			return;
 		}
+
+		// Add a fee line item so the order's line totals balance.
+		$fee = new \WC_Order_Item_Fee();
+		$fee->set_name( __( 'Discounted from wallet', 'wp-simple-wallet' ) );
+		$fee->set_total( -$amount );
+		$fee->set_tax_status( 'none' );
+		$order->add_item( $fee );
 
 		$order->update_meta_data( '_wsw_wallet_pending', $amount );
 		$order->save();

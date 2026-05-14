@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.4.3 |
+| **Version** | 1.5.0 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -185,6 +185,12 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.5.0
+- **Breaking (internal)**: the wallet no longer adds a negative cart fee. Instead it reduces the payment total via the `woocommerce_calculated_total` filter, which fires **after** all taxes have been computed and locked in. This means VAT/IVA is always preserved — the wallet is treated as a payment method, not a discount. Invoices now show the correct tax obligation regardless of how much the wallet covers.
+- A visual *Discounted from wallet* row is injected in the order review table (before the Total line) so the customer can see the deduction.
+- When the order is created, a non-taxable fee line item is added to the order object so that line totals balance for invoicing plugins.
+- The wallet box now reads the applied amount from the WC session (set during `woocommerce_calculated_total`) instead of from a cart fee that no longer exists.
 
 ### 1.4.3
 - **Fix**: the wallet fee now includes VAT/IVA. Previously the fee was calculated from cart-level getters that returned stale (zero) tax values during `woocommerce_cart_calculate_fees`, so the deduction missed taxes — making them vanish from the order and producing an incorrect invoice. The fee now reads item-level `line_tax` (always current) and falls back to shipping-rate tax data, ensuring the wallet covers the gross total including all taxes.
