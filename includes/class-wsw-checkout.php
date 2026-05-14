@@ -408,10 +408,11 @@ class WSW_Checkout {
 	 * Uses _wsw_wallet_pending meta (set by store_wallet_intent) so it
 	 * works even when the WC session is gone (PayPal IPN, async gateways).
 	 *
-	 * After a successful debit the order total is restored to the full
-	 * (pre-wallet) amount so that invoicing plugins see the real sale
-	 * value, including taxes. The wallet portion is recorded in
-	 * _wsw_wallet_amount meta for refund/cancellation logic.
+	 * The order total is NOT modified — it stays at whatever the gateway
+	 * was charged. The wallet portion is recorded in _wsw_wallet_amount
+	 * meta for refund/cancellation logic. Line items (products, shipping,
+	 * taxes) keep their full values, so invoicing plugins that calculate
+	 * the tax base from items will produce correct invoices.
 	 *
 	 * @param int $order_id
 	 */
@@ -456,12 +457,6 @@ class WSW_Checkout {
 		if ( ! is_wp_error( $tx ) ) {
 			$order->update_meta_data( '_wsw_wallet_amount', $amount );
 			$order->delete_meta_data( '_wsw_wallet_pending' );
-
-			// Restore order total to the full (pre-wallet) amount so
-			// the invoice shows the real sale value with correct taxes.
-			$current_total = floatval( $order->get_total( 'edit' ) );
-			$order->set_total( round( $current_total + $amount, wc_get_price_decimals() ) );
-
 			$order->save();
 			$order->add_order_note(
 				sprintf(

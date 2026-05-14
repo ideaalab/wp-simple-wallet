@@ -187,7 +187,7 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 ## Changelog
 
 ### 1.5.1
-- **Invoice fix**: the wallet no longer adds a fee line item to the order. Previously the negative fee distorted the tax base for invoicing plugins (e.g. base imponible = 52.56 instead of 64.56). Now the wallet amount is stored only in order meta (`_wsw_wallet_pending` / `_wsw_wallet_amount`) and the order total is restored to the full pre-wallet value after the wallet is debited, so invoices show the correct base, IVA, and total.
+- **Invoice fix**: the wallet no longer adds a fee line item to the order. Previously the negative fee distorted the tax base for invoicing plugins (e.g. base imponible = 52.56 instead of 64.56). Now the wallet amount is stored only in order meta (`_wsw_wallet_pending` / `_wsw_wallet_amount`). The order total remains at what the gateway was charged; line items (products, shipping, taxes) keep their full values so invoicing plugins that calculate from items produce correct invoices.
 - **Rename**: "Discounted from wallet" → "Paid from wallet" — the checkout review row and all references now reflect that the wallet is a payment method, not a discount.
 
 ### 1.5.0
