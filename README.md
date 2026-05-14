@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.4.0 |
+| **Version** | 1.4.1 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -185,6 +185,10 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.4.1
+- **Fix**: the wallet box now stays in sync during WooCommerce AJAX checkout refreshes. Previously, checking or unchecking the wallet had no visible effect after the first interaction because the checkout template's `woocommerce_review_order_before_payment` hook does not fire during AJAX updates. The box is now delivered as a custom WC fragment (`woocommerce_update_order_review_fragments`), so it re-renders on every `update_checkout` cycle.
+- **UX**: when the wallet discount is active, the box shows the applied amount and an explicit **Remove** link instead of a checked checkbox, making it obvious how to undo the discount.
 
 ### 1.4.0
 - **Breaking**: the "Pay with wallet" WooCommerce payment gateway has been **replaced** by a gift-card-style wallet box that appears above payment methods at checkout. Customers check a box to apply their wallet balance; the remaining total (if any) is paid with any other gateway (Stripe, PayPal, bank transfer, etc.). If the wallet covers the full order, no payment method is needed.

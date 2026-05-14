@@ -6,6 +6,11 @@
  * negative fee on the cart so the remaining total is charged to whatever
  * payment method the customer selects. If the wallet covers the full
  * amount the order processes as a zero-total (no gateway needed).
+ *
+ * The box is rendered via woocommerce_review_order_before_payment on the
+ * initial page load. Since that action does NOT fire during WC AJAX
+ * updates (wp_doing_ajax check in checkout/payment.php), the box is kept
+ * in sync via the woocommerce_update_order_review_fragments filter.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -15,8 +20,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 class WSW_Checkout {
 
 	public function __construct() {
-		// Display the wallet box above payment methods.
+		// Display the wallet box above payment methods (initial page load).
 		add_action( 'woocommerce_review_order_before_payment', array( $this, 'render_wallet_box' ) );
+
+		// Keep the box updated during AJAX checkout refreshes.
+		add_filter( 'woocommerce_update_order_review_fragments', array( $this, 'wallet_fragment' ) );
 
 		// Apply wallet fee during cart calculation.
 		add_action( 'woocommerce_cart_calculate_fees', array( $this, 'apply_wallet_fee' ) );
@@ -91,7 +99,9 @@ class WSW_Checkout {
 	 * Calculate the cart total before the wallet fee.
 	 *
 	 * At the point where woocommerce_cart_calculate_fees fires, item totals
-	 * (after coupons), taxes, and shipping are already calculated.
+	 * (after coupons), item taxes, shipping and shipping taxes are already
+	 * calculated. The result includes VAT/IVA — the wallet deducts from the
+	 * gross total.
 	 *
 	 * @param WC_Cart $cart
 	 * @return float
@@ -118,17 +128,24 @@ class WSW_Checkout {
 	 * ----------------------------------------------------------------*/
 
 	/**
-	 * Output the wallet box inside the checkout order review.
+	 * Build the wallet box HTML.
+	 *
+	 * Always outputs a wrapper div with id="wsw-wallet-box" so the AJAX
+	 * fragment has a stable target to replace.
+	 *
+	 * @return string
 	 */
-	public function render_wallet_box() {
+	private function build_wallet_box_html() {
 		if ( ! $this->should_show_box() ) {
-			return;
+			return '<div id="wsw-wallet-box"></div>';
 		}
 
 		$user_id = get_current_user_id();
 		$balance = WSW_Wallet::get_balance( $user_id );
 		$applied = WC()->session ? (bool) WC()->session->get( 'wsw_apply_wallet', false ) : false;
 		$amount  = WC()->session ? floatval( WC()->session->get( 'wsw_apply_amount', 0 ) ) : 0;
+
+		ob_start();
 		?>
 		<div id="wsw-wallet-box" class="wsw-wallet-box<?php echo $applied ? ' wsw-wallet-applied' : ''; ?>">
 			<div class="wsw-wallet-box-header">
@@ -137,22 +154,49 @@ class WSW_Checkout {
 					<?php echo wp_kses_post( wc_price( $balance ) ); ?>
 				</span>
 			</div>
-			<label class="wsw-wallet-toggle">
-				<input type="checkbox" id="wsw-apply-wallet" value="1" <?php checked( $applied ); ?> />
-				<?php
-				if ( $applied && $amount > 0 ) {
-					printf(
-						/* translators: %s: formatted negative price, e.g. -€42.30 */
-						esc_html__( 'Apply wallet balance to this order (%s)', 'wp-simple-wallet' ),
-						wp_strip_all_tags( wc_price( -$amount ) )
-					);
-				} else {
-					esc_html_e( 'Apply wallet balance to this order', 'wp-simple-wallet' );
-				}
-				?>
-			</label>
+			<?php if ( $applied && $amount > 0 ) : ?>
+				<div class="wsw-wallet-applied-row">
+					<span class="wsw-wallet-discount">
+						<?php
+						printf(
+							/* translators: %s: formatted negative price, e.g. -€42.30 */
+							esc_html__( 'Discount applied: %s', 'wp-simple-wallet' ),
+							wp_kses_post( wc_price( -$amount ) )
+						);
+						?>
+					</span>
+					<a href="#" id="wsw-remove-wallet" class="wsw-wallet-remove">
+						&times; <?php esc_html_e( 'Remove', 'wp-simple-wallet' ); ?>
+					</a>
+				</div>
+			<?php else : ?>
+				<label class="wsw-wallet-toggle">
+					<input type="checkbox" id="wsw-apply-wallet" value="1" />
+					<?php esc_html_e( 'Apply wallet balance to this order', 'wp-simple-wallet' ); ?>
+				</label>
+			<?php endif; ?>
 		</div>
 		<?php
+		return ob_get_clean();
+	}
+
+	/**
+	 * Output the wallet box (initial page render via action hook).
+	 */
+	public function render_wallet_box() {
+		echo $this->build_wallet_box_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	/**
+	 * Add the wallet box as an AJAX fragment so it stays in sync when WC
+	 * refreshes the checkout order review.
+	 *
+	 * @param array $fragments
+	 * @return array
+	 */
+	public function wallet_fragment( $fragments ) {
+		$fragments['#wsw-wallet-box'] = $this->build_wallet_box_html();
+		return $fragments;
 	}
 
 	/**
@@ -171,6 +215,7 @@ class WSW_Checkout {
 
 		/* ---- CSS ---- */
 		$css = '
+			.wsw-wallet-box:empty{display:none}
 			.wsw-wallet-box{border:2px solid #dcdcde;border-radius:6px;padding:16px;margin:0 0 20px;background:#fafafa;transition:border-color .2s,background .2s}
 			.wsw-wallet-box.wsw-wallet-applied{border-color:#2e7d32;background:#f0faf0}
 			.wsw-wallet-box.wsw-wallet-loading{opacity:.6;pointer-events:none}
@@ -180,6 +225,10 @@ class WSW_Checkout {
 			.wsw-wallet-amount.wsw-negative{color:#c62828}
 			.wsw-wallet-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.95em}
 			.wsw-wallet-toggle input[type=checkbox]{margin:0;width:18px;height:18px}
+			.wsw-wallet-applied-row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+			.wsw-wallet-discount{font-size:.95em;color:#2e7d32;font-weight:600}
+			.wsw-wallet-remove{font-size:.85em;color:#b32d2e;text-decoration:none;white-space:nowrap}
+			.wsw-wallet-remove:hover{text-decoration:underline;color:#8b0000}
 		';
 
 		wp_register_style( 'wsw-checkout', false ); // phpcs:ignore
@@ -189,16 +238,22 @@ class WSW_Checkout {
 		/* ---- JS ---- */
 		$js = '
 			(function($){
-				$(document).on("change","#wsw-apply-wallet",function(){
-					var checked=$(this).is(":checked");
+				function wswToggle(apply){
 					$("#wsw-wallet-box").addClass("wsw-wallet-loading");
 					$.post("' . esc_js( $ajax_url ) . '",{
 						action:"wsw_toggle_wallet",
-						apply:checked?"1":"0",
+						apply:apply,
 						nonce:"' . esc_js( $nonce ) . '"
 					}).always(function(){
 						$(document.body).trigger("update_checkout");
 					});
+				}
+				$(document).on("change","#wsw-apply-wallet",function(){
+					wswToggle($(this).is(":checked")?"1":"0");
+				});
+				$(document).on("click","#wsw-remove-wallet",function(e){
+					e.preventDefault();
+					wswToggle("0");
 				});
 			})(jQuery);
 		';
@@ -236,6 +291,10 @@ class WSW_Checkout {
 
 	/**
 	 * Add a negative fee when the wallet checkbox is active.
+	 *
+	 * The fee is NOT taxable — it is a payment, not a discount. Product
+	 * taxes (IVA) are unaffected; the fee simply reduces the gross total
+	 * the customer has to pay via another method.
 	 *
 	 * @param WC_Cart $cart
 	 */
