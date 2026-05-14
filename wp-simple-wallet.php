@@ -3,7 +3,7 @@
  * Plugin Name: WP Simple Wallet
  * Plugin URI: https://github.com/ideaalab/wp-simple-wallet
  * Description: Wallet balance for WooCommerce customers. Per-user activation, admin adjustments, transaction history, and checkout wallet balance. HPOS compatible.
- * Version: 1.4.2
+ * Version: 1.4.3
  * Author: IDEAA Lab
  * Author URI: https://github.com/ideaalab
  * Requires at least: 6.0
@@ -30,7 +30,7 @@ PucFactory::buildUpdateChecker(
 	'wp-simple-wallet'
 );
 
-define( 'WSW_VERSION', '1.4.2' );
+define( 'WSW_VERSION', '1.4.3' );
 define( 'WSW_PLUGIN_FILE', __FILE__ );
 define( 'WSW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WSW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

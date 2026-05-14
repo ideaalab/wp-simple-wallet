@@ -96,23 +96,44 @@ class WSW_Checkout {
 	}
 
 	/**
-	 * Calculate the cart total before the wallet fee.
+	 * Calculate the cart total (incl. tax) before the wallet fee.
 	 *
-	 * At the point where woocommerce_cart_calculate_fees fires, item totals
-	 * (after coupons), item taxes, shipping and shipping taxes are already
-	 * calculated. The result includes VAT/IVA — the wallet deducts from the
-	 * gross total.
+	 * Cart-level getters like get_cart_contents_tax() may return stale
+	 * values during woocommerce_cart_calculate_fees on some WC versions.
+	 * We read item-level line_total / line_tax instead — these are
+	 * written to the cart contents array by
+	 * WC_Cart_Totals::calculate_item_totals() before fee calculation
+	 * and are always current. For shipping tax we try the cart getter
+	 * first and fall back to the chosen rate's tax data.
 	 *
 	 * @param WC_Cart $cart
 	 * @return float
 	 */
 	private function get_pre_wallet_total( $cart ) {
-		$total = floatval( $cart->get_cart_contents_total() )
-			   + floatval( $cart->get_cart_contents_tax() )
-			   + floatval( $cart->get_shipping_total() )
-			   + floatval( $cart->get_shipping_tax() );
+		// --- Items (incl tax) -------------------------------------------
+		$total = 0;
+		foreach ( $cart->get_cart() as $item ) {
+			$total += floatval( $item['line_total'] ?? 0 );
+			$total += floatval( $item['line_tax'] ?? 0 );
+		}
 
-		// Include other fees already added by different plugins.
+		// --- Shipping (incl tax) ----------------------------------------
+		$shipping     = floatval( $cart->get_shipping_total() );
+		$shipping_tax = floatval( $cart->get_shipping_tax() );
+
+		// Fallback: read tax from the chosen shipping rate objects.
+		if ( $shipping_tax <= 0 && $shipping > 0 && WC()->session ) {
+			$chosen   = WC()->session->get( 'chosen_shipping_methods', array() );
+			$packages = WC()->shipping() ? WC()->shipping()->get_packages() : array();
+			foreach ( $packages as $i => $package ) {
+				if ( isset( $chosen[ $i ], $package['rates'][ $chosen[ $i ] ] ) ) {
+					$shipping_tax += array_sum( array_map( 'floatval', $package['rates'][ $chosen[ $i ] ]->taxes ) );
+				}
+			}
+		}
+		$total += $shipping + $shipping_tax;
+
+		// --- Other fees from third-party plugins ------------------------
 		foreach ( $cart->get_fees() as $fee ) {
 			$total += floatval( $fee->total );
 			if ( ! empty( $fee->tax ) ) {
@@ -172,9 +193,9 @@ class WSW_Checkout {
 					<span class="wsw-wallet-discount">
 						<?php
 						printf(
-							/* translators: %s: formatted negative price, e.g. -€42.30 */
-							esc_html__( 'This will be deducted from your wallet: %s', 'wp-simple-wallet' ),
-							wp_kses_post( wc_price( -$amount ) )
+							/* translators: %s: formatted price, e.g. €78.12 */
+							esc_html__( '%s will be deducted from your wallet.', 'wp-simple-wallet' ),
+							wp_kses_post( wc_price( $amount ) )
 						);
 						?>
 					</span>

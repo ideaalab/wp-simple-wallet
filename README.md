@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.4.2 |
+| **Version** | 1.4.3 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -185,6 +185,10 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.4.3
+- **Fix**: the wallet fee now includes VAT/IVA. Previously the fee was calculated from cart-level getters that returned stale (zero) tax values during `woocommerce_cart_calculate_fees`, so the deduction missed taxes — making them vanish from the order and producing an incorrect invoice. The fee now reads item-level `line_tax` (always current) and falls back to shipping-rate tax data, ensuring the wallet covers the gross total including all taxes.
+- **Fiscal correctness**: the wallet is a *payment method*, not a discount. VAT/IVA is preserved on the order even when the wallet covers 100 % of the total — invoices will reflect the correct tax obligation.
 
 ### 1.4.2
 - **Fix**: the wallet box now reads the applied amount directly from the cart fee instead of from the WC session. This eliminates any possible mismatch between the fee line in the order review and the amount shown in the wallet box (e.g. after switching shipping methods on v1.4.0/1.4.1).
