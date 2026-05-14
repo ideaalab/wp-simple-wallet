@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.4.1 |
+| **Version** | 1.4.2 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -185,6 +185,10 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.4.2
+- **Fix**: the wallet box now reads the applied amount directly from the cart fee instead of from the WC session. This eliminates any possible mismatch between the fee line in the order review and the amount shown in the wallet box (e.g. after switching shipping methods on v1.4.0/1.4.1).
+- **Labels**: clearer checkout copy — the fee line is now labelled *Discounted from wallet*, the box header reads *Current wallet balance*, and the applied state says *This will be deducted from your wallet*.
 
 ### 1.4.1
 - **Fix**: the wallet box now stays in sync during WooCommerce AJAX checkout refreshes. Previously, checking or unchecking the wallet had no visible effect after the first interaction because the checkout template's `woocommerce_review_order_before_payment` hook does not fire during AJAX updates. The box is now delivered as a custom WC fragment (`woocommerce_update_order_review_fragments`), so it re-renders on every `update_checkout` cycle.

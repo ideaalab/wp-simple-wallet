@@ -142,14 +142,27 @@ class WSW_Checkout {
 
 		$user_id = get_current_user_id();
 		$balance = WSW_Wallet::get_balance( $user_id );
-		$applied = WC()->session ? (bool) WC()->session->get( 'wsw_apply_wallet', false ) : false;
-		$amount  = WC()->session ? floatval( WC()->session->get( 'wsw_apply_amount', 0 ) ) : 0;
+
+		// Read applied state from the actual cart fee so the displayed
+		// amount always matches the fee line in the order review.
+		$applied = false;
+		$amount  = 0;
+		if ( WC()->cart ) {
+			$fee_name = __( 'Discounted from wallet', 'wp-simple-wallet' );
+			foreach ( WC()->cart->get_fees() as $fee ) {
+				if ( $fee->name === $fee_name ) {
+					$applied = true;
+					$amount  = abs( floatval( $fee->total ) );
+					break;
+				}
+			}
+		}
 
 		ob_start();
 		?>
 		<div id="wsw-wallet-box" class="wsw-wallet-box<?php echo $applied ? ' wsw-wallet-applied' : ''; ?>">
 			<div class="wsw-wallet-box-header">
-				<span class="wsw-wallet-label"><?php esc_html_e( 'Wallet balance', 'wp-simple-wallet' ); ?></span>
+				<span class="wsw-wallet-label"><?php esc_html_e( 'Current wallet balance', 'wp-simple-wallet' ); ?></span>
 				<span class="wsw-wallet-amount<?php echo $balance < 0 ? ' wsw-negative' : ''; ?>">
 					<?php echo wp_kses_post( wc_price( $balance ) ); ?>
 				</span>
@@ -160,7 +173,7 @@ class WSW_Checkout {
 						<?php
 						printf(
 							/* translators: %s: formatted negative price, e.g. -€42.30 */
-							esc_html__( 'Discount applied: %s', 'wp-simple-wallet' ),
+							esc_html__( 'This will be deducted from your wallet: %s', 'wp-simple-wallet' ),
 							wp_kses_post( wc_price( -$amount ) )
 						);
 						?>
@@ -227,8 +240,8 @@ class WSW_Checkout {
 			.wsw-wallet-toggle input[type=checkbox]{margin:0;width:18px;height:18px}
 			.wsw-wallet-applied-row{display:flex;justify-content:space-between;align-items:center;gap:12px}
 			.wsw-wallet-discount{font-size:.95em;color:#2e7d32;font-weight:600}
-			.wsw-wallet-remove{font-size:.85em;color:#b32d2e;text-decoration:none;white-space:nowrap}
-			.wsw-wallet-remove:hover{text-decoration:underline;color:#8b0000}
+			.wsw-wallet-box .wsw-wallet-remove{font-size:.85em;color:#b32d2e!important;text-decoration:underline;white-space:nowrap}
+			.wsw-wallet-box .wsw-wallet-remove:hover{color:#8b0000!important}
 		';
 
 		wp_register_style( 'wsw-checkout', false ); // phpcs:ignore
@@ -323,7 +336,7 @@ class WSW_Checkout {
 		}
 
 		WC()->session->set( 'wsw_apply_amount', $apply );
-		$cart->add_fee( __( 'Wallet balance', 'wp-simple-wallet' ), -$apply, false );
+		$cart->add_fee( __( 'Discounted from wallet', 'wp-simple-wallet' ), -$apply, false );
 	}
 
 	/* ------------------------------------------------------------------
