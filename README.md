@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.5.1 |
+| **Version** | 1.5.2 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -186,8 +186,12 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 
 ## Changelog
 
+### 1.5.2
+- **Fix**: the wallet is now debited immediately when the order is placed (like a gift card), not when external payment is confirmed. Previously, BACS (bank transfer) orders never debited the wallet because `payment_complete` does not fire until the admin confirms receipt. If the order later fails or is cancelled, the balance is restored automatically.
+- **Invoice fix**: the order total is restored to the full pre-wallet amount once the gateway has finished processing, so invoicing plugins compute the correct tax base and IVA. A "Paid from wallet" and "Charged to payment method" row appear in the order totals (admin, emails, My Account) to document the payment split.
+
 ### 1.5.1
-- **Invoice fix**: the wallet no longer adds a fee line item to the order. Previously the negative fee distorted the tax base for invoicing plugins (e.g. base imponible = 8.00 instead of 20.00). After the wallet is debited, the order total is restored to the full pre-wallet amount so that invoicing plugins compute the correct tax base, IVA, and total. A "Paid from wallet" and "Charged to payment method" row are injected into the order totals (admin, emails, My Account) to document the payment split.
+- The wallet no longer adds a fee line item to the order. Previously the negative fee distorted the tax base for invoicing plugins (e.g. base imponible = 8.00 instead of 20.00).
 - **Rename**: "Discounted from wallet" → "Paid from wallet" — the checkout review row and all references now reflect that the wallet is a payment method, not a discount.
 - **Set balance**: admin balance adjustments now support a "Set balance to" option that sets the wallet to an absolute value. Internally it calculates and records the credit or debit for the difference.
 
