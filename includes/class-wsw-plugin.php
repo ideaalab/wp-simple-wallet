@@ -29,6 +29,7 @@ class WSW_Plugin {
 
 		add_action( 'woocommerce_order_refunded', array( $this, 'on_order_refunded' ), 10, 2 );
 		add_action( 'woocommerce_order_status_cancelled', array( $this, 'on_order_cancelled' ) );
+		add_action( 'woocommerce_order_status_failed', array( $this, 'on_order_cancelled' ) );
 	}
 
 	/**
@@ -76,9 +77,12 @@ class WSW_Plugin {
 		// For split-payment orders (wallet + gateway), do NOT auto-refund
 		// the wallet portion — the gateway handles its own refund and the
 		// admin should adjust wallet manually.
-		// Since v1.5.1 the order total is restored to the full pre-wallet
-		// amount, so the gateway portion = total − wallet_amount.
-		$gateway_charged = floatval( $order->get_total() ) - $wallet_amount;
+		$order_total = floatval( $order->get_total() );
+		if ( $order->get_meta( '_wsw_total_restored' ) ) {
+			$gateway_charged = $order_total - $wallet_amount;
+		} else {
+			$gateway_charged = $order_total;
+		}
 		if ( ! $is_legacy && $gateway_charged > 0.01 ) {
 			return;
 		}

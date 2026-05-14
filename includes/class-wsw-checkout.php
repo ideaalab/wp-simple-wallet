@@ -45,15 +45,14 @@ class WSW_Checkout {
 		// Validate wallet availability before order is created.
 		add_action( 'woocommerce_after_checkout_validation', array( $this, 'validate_wallet' ), 10, 2 );
 
-		// Store wallet intent in order meta (before payment gateway runs).
+		// Debit wallet immediately when the order is created.
 		add_action( 'woocommerce_checkout_order_processed', array( $this, 'store_wallet_intent' ), 10, 3 );
 
-		// Debit wallet after payment succeeds.
-		add_action( 'woocommerce_payment_complete', array( $this, 'process_wallet_debit' ) );
-
-		// Some gateways transition status without calling payment_complete().
-		add_action( 'woocommerce_order_status_processing', array( $this, 'process_wallet_debit' ) );
-		add_action( 'woocommerce_order_status_completed', array( $this, 'process_wallet_debit' ) );
+		// Restore order total to full amount after the gateway has processed.
+		add_action( 'woocommerce_payment_complete', array( $this, 'restore_order_total' ) );
+		add_action( 'woocommerce_order_status_on-hold', array( $this, 'restore_order_total' ) );
+		add_action( 'woocommerce_order_status_processing', array( $this, 'restore_order_total' ) );
+		add_action( 'woocommerce_order_status_completed', array( $this, 'restore_order_total' ) );
 
 		// Show "Paid from wallet" row in order totals (admin, emails, My Account).
 		add_filter( 'woocommerce_get_order_item_totals', array( $this, 'order_totals_wallet_row' ), 10, 2 );
@@ -196,7 +195,14 @@ class WSW_Checkout {
 			return $rows;
 		}
 
-		$gateway_charged = round( floatval( $order->get_total( 'edit' ) ) - $wallet_amount, wc_get_price_decimals() );
+		$order_total = floatval( $order->get_total( 'edit' ) );
+		if ( $order->get_meta( '_wsw_total_restored' ) ) {
+			// Total includes wallet — subtract to get gateway portion.
+			$gateway_charged = round( $order_total - $wallet_amount, wc_get_price_decimals() );
+		} else {
+			// Total is what the gateway was charged (not yet restored).
+			$gateway_charged = round( $order_total, wc_get_price_decimals() );
+		}
 
 		// Build new rows array, injecting wallet info before 'order_total'.
 		$new_rows = array();
@@ -418,13 +424,17 @@ class WSW_Checkout {
 	}
 
 	/**
-	 * Store the wallet intent in order meta right after the order is
-	 * created, before the payment gateway runs.
+	 * Debit the wallet immediately when the order is created.
 	 *
-	 * No fee line item is added to the order — the wallet is a payment
-	 * method, not a discount. After the wallet is debited the order
-	 * total will be restored to the full (pre-wallet) amount so that
-	 * invoicing plugins calculate the correct tax base.
+	 * The wallet is an internal ledger (like a gift card): the balance
+	 * is deducted as soon as the customer places the order, regardless
+	 * of whether the external payment method (bank transfer, Stripe,
+	 * PayPal) has been confirmed. If the order is later cancelled or
+	 * fails, the wallet balance is restored automatically.
+	 *
+	 * The order total is NOT restored here — the gateway still needs
+	 * to see the reduced total. Total restoration happens later in
+	 * restore_order_total() once the gateway has finished.
 	 *
 	 * @param int      $order_id
 	 * @param array    $posted_data
@@ -440,49 +450,16 @@ class WSW_Checkout {
 			return;
 		}
 
-		$order->update_meta_data( '_wsw_wallet_pending', $amount );
-		$order->save();
-
-		// Clear session so a second submit cannot double-debit.
+		// Clear session first so a second submit cannot double-debit.
 		WC()->session->set( 'wsw_apply_wallet', false );
 		WC()->session->set( 'wsw_apply_amount', 0 );
-	}
-
-	/**
-	 * Debit the wallet after the payment succeeds.
-	 *
-	 * Hooked into woocommerce_payment_complete and order-status transitions.
-	 * Uses _wsw_wallet_pending meta (set by store_wallet_intent) so it
-	 * works even when the WC session is gone (PayPal IPN, async gateways).
-	 *
-	 * After a successful debit the order total is restored to the full
-	 * (pre-wallet) amount so that invoicing plugins see the real sale
-	 * value and compute the correct tax base. The wallet portion is
-	 * recorded in _wsw_wallet_amount meta for refund/cancellation logic.
-	 *
-	 * @param int $order_id
-	 */
-	public function process_wallet_debit( $order_id ) {
-		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
-			return;
-		}
-
-		$amount = floatval( $order->get_meta( '_wsw_wallet_pending' ) );
-		if ( $amount <= 0 ) {
-			return;
-		}
-
-		// Already processed.
-		if ( $order->get_meta( '_wsw_wallet_amount' ) ) {
-			return;
-		}
 
 		$user_id = $order->get_user_id();
 		if ( ! $user_id ) {
 			return;
 		}
 
+		// Debit wallet immediately.
 		$note = sprintf(
 			/* translators: %d: order number */
 			__( 'Payment for order #%d', 'wp-simple-wallet' ),
@@ -502,13 +479,6 @@ class WSW_Checkout {
 
 		if ( ! is_wp_error( $tx ) ) {
 			$order->update_meta_data( '_wsw_wallet_amount', $amount );
-			$order->delete_meta_data( '_wsw_wallet_pending' );
-
-			// Restore order total to the full (pre-wallet) amount so
-			// invoicing plugins compute the correct tax base.
-			$current_total = floatval( $order->get_total( 'edit' ) );
-			$order->set_total( round( $current_total + $amount, wc_get_price_decimals() ) );
-
 			$order->save();
 			$order->add_order_note(
 				sprintf(
@@ -518,6 +488,9 @@ class WSW_Checkout {
 				)
 			);
 		} else {
+			// Store as pending — restore_order_total() will retry on status change.
+			$order->update_meta_data( '_wsw_wallet_pending', $amount );
+			$order->save();
 			$order->add_order_note(
 				sprintf(
 					/* translators: %s: error message */
@@ -526,6 +499,76 @@ class WSW_Checkout {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Restore the order total to the full (pre-wallet) amount.
+	 *
+	 * Hooked into woocommerce_payment_complete and order-status transitions
+	 * (processing, completed, on-hold). By the time these hooks fire the
+	 * payment gateway has already processed and sent its emails with the
+	 * reduced total, so restoring is safe for invoicing.
+	 *
+	 * Also handles backwards-compat: if _wsw_wallet_pending exists from
+	 * an older version or a failed debit, the wallet is debited now.
+	 *
+	 * @param int $order_id
+	 */
+	public function restore_order_total( $order_id ) {
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+
+		// Backwards compat / retry: debit if still pending.
+		$pending = floatval( $order->get_meta( '_wsw_wallet_pending' ) );
+		if ( $pending > 0 && ! $order->get_meta( '_wsw_wallet_amount' ) ) {
+			$user_id = $order->get_user_id();
+			if ( $user_id ) {
+				$note = sprintf(
+					/* translators: %d: order number */
+					__( 'Payment for order #%d', 'wp-simple-wallet' ),
+					$order->get_id()
+				);
+				$tx = WSW_Wallet::adjust(
+					$user_id,
+					-$pending,
+					WSW_Wallet::TYPE_PAYMENT,
+					$note,
+					array(
+						'order_id' => $order->get_id(),
+						'source'   => 'wp-simple-wallet',
+					)
+				);
+				if ( ! is_wp_error( $tx ) ) {
+					$order->update_meta_data( '_wsw_wallet_amount', $pending );
+					$order->delete_meta_data( '_wsw_wallet_pending' );
+					$order->save();
+					$order->add_order_note(
+						sprintf(
+							/* translators: %s: formatted price */
+							__( 'Wallet: %s applied from customer balance.', 'wp-simple-wallet' ),
+							wc_price( $pending )
+						)
+					);
+				}
+			}
+		}
+
+		// Restore order total to the full (pre-wallet) amount.
+		$wallet_amount = floatval( $order->get_meta( '_wsw_wallet_amount' ) );
+		if ( $wallet_amount <= 0 ) {
+			return;
+		}
+		// Already restored.
+		if ( $order->get_meta( '_wsw_total_restored' ) ) {
+			return;
+		}
+
+		$current_total = floatval( $order->get_total( 'edit' ) );
+		$order->set_total( round( $current_total + $wallet_amount, wc_get_price_decimals() ) );
+		$order->update_meta_data( '_wsw_total_restored', 1 );
+		$order->save();
 	}
 
 	/**
