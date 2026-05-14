@@ -5,7 +5,7 @@ Wallet balance for WooCommerce customers. Per-user activation, admin adjustments
 | | |
 |---|---|
 | **Slug** | `wp-simple-wallet` |
-| **Version** | 1.5.0 |
+| **Version** | 1.5.1 |
 | **Author** | IDEAA Lab |
 | **Requires WP** | 6.0+ |
 | **Requires PHP** | 7.4+ |
@@ -185,6 +185,10 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 - Keep WP, WooCommerce, and this plugin on the latest version (the bundled update-checker pulls from GitHub).
 
 ## Changelog
+
+### 1.5.1
+- **Invoice fix**: the wallet no longer adds a fee line item to the order. Previously the negative fee distorted the tax base for invoicing plugins (e.g. base imponible = 52.56 instead of 64.56). Now the wallet amount is stored only in order meta (`_wsw_wallet_pending` / `_wsw_wallet_amount`) and the order total is restored to the full pre-wallet value after the wallet is debited, so invoices show the correct base, IVA, and total.
+- **Rename**: "Discounted from wallet" → "Paid from wallet" — the checkout review row and all references now reflect that the wallet is a payment method, not a discount.
 
 ### 1.5.0
 - **Breaking (internal)**: the wallet no longer adds a negative cart fee. Instead it reduces the payment total via the `woocommerce_calculated_total` filter, which fires **after** all taxes have been computed and locked in. This means VAT/IVA is always preserved — the wallet is treated as a payment method, not a discount. Invoices now show the correct tax obligation regardless of how much the wallet covers.

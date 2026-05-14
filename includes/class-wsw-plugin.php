@@ -36,10 +36,13 @@ class WSW_Plugin {
 	 *
 	 * Supports two flows:
 	 * 1) Legacy v1.x: orders paid entirely with the old `wsw_wallet` gateway.
-	 * 2) New v1.4+: orders where wallet was applied as a fee. For these,
-	 *    auto-refund only runs when the gateway portion was zero (the wallet
-	 *    covered the full total). On split-payment orders the gateway handles
-	 *    its own refund; the admin can adjust the wallet manually.
+	 * 2) New v1.4+: orders where wallet was applied via meta. Auto-refund
+	 *    only runs when the gateway portion was zero (the wallet covered
+	 *    the full total). On split-payment orders the gateway handles its
+	 *    own refund; the admin can adjust the wallet manually.
+	 *    Note: since v1.5.1 the order total is restored to the full
+	 *    pre-wallet amount after the wallet debit, so the gateway portion
+	 *    is calculated as (order total − wallet amount).
 	 *
 	 * @param int $order_id
 	 * @param int $refund_id
@@ -70,10 +73,13 @@ class WSW_Plugin {
 			return;
 		}
 
-		// For fee-based orders with a separate gateway (split payment),
-		// do NOT auto-refund the wallet portion — the gateway handles its
-		// own refund and the admin should adjust wallet manually.
-		if ( ! $is_legacy && floatval( $order->get_total() ) > 0.01 ) {
+		// For split-payment orders (wallet + gateway), do NOT auto-refund
+		// the wallet portion — the gateway handles its own refund and the
+		// admin should adjust wallet manually.
+		// Since v1.5.1 the order total is restored to the full pre-wallet
+		// amount, so the gateway portion = total − wallet_amount.
+		$gateway_charged = floatval( $order->get_total() ) - $wallet_amount;
+		if ( ! $is_legacy && $gateway_charged > 0.01 ) {
 			return;
 		}
 

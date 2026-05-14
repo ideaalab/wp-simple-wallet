@@ -13,9 +13,10 @@
  *   are computed) reduces only the payment total.
  * - A visual row is injected in the order review table to show the
  *   deduction.
- * - When the order is created, a non-taxable fee line item is added to
- *   the order so line totals balance and invoicing plugins can pick it
- *   up — but taxes have already been locked in by WC at that point.
+ * - When the order is created, the wallet amount is stored in order
+ *   meta only — NO fee line item is added. After payment succeeds and
+ *   the wallet is debited, the order total is restored to the full
+ *   (pre-wallet) amount so invoicing plugins see the correct base.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -162,8 +163,8 @@ class WSW_Checkout {
 		}
 		?>
 		<tr class="wsw-wallet-payment">
-			<th><?php esc_html_e( 'Discounted from wallet', 'wp-simple-wallet' ); ?></th>
-			<td data-title="<?php esc_attr_e( 'Discounted from wallet', 'wp-simple-wallet' ); ?>">
+			<th><?php esc_html_e( 'Paid from wallet', 'wp-simple-wallet' ); ?></th>
+			<td data-title="<?php esc_attr_e( 'Paid from wallet', 'wp-simple-wallet' ); ?>">
 				<?php echo wp_kses_post( wc_price( -$amount ) ); ?>
 			</td>
 		</tr>
@@ -373,10 +374,10 @@ class WSW_Checkout {
 	 * Store the wallet intent in order meta right after the order is
 	 * created, before the payment gateway runs.
 	 *
-	 * Also adds a non-taxable fee line item to the order so that line
-	 * totals balance (items + shipping + fee + tax = order total).
-	 * Taxes are already locked in by WC at this point and will not be
-	 * recalculated.
+	 * No fee line item is added to the order — the wallet is a payment
+	 * method, not a discount. After the wallet is debited the order
+	 * total will be restored to the full (pre-wallet) amount so that
+	 * invoicing plugins calculate the correct tax base.
 	 *
 	 * @param int      $order_id
 	 * @param array    $posted_data
@@ -392,13 +393,6 @@ class WSW_Checkout {
 			return;
 		}
 
-		// Add a fee line item so the order's line totals balance.
-		$fee = new \WC_Order_Item_Fee();
-		$fee->set_name( __( 'Discounted from wallet', 'wp-simple-wallet' ) );
-		$fee->set_total( -$amount );
-		$fee->set_tax_status( 'none' );
-		$order->add_item( $fee );
-
 		$order->update_meta_data( '_wsw_wallet_pending', $amount );
 		$order->save();
 
@@ -413,6 +407,11 @@ class WSW_Checkout {
 	 * Hooked into woocommerce_payment_complete and order-status transitions.
 	 * Uses _wsw_wallet_pending meta (set by store_wallet_intent) so it
 	 * works even when the WC session is gone (PayPal IPN, async gateways).
+	 *
+	 * After a successful debit the order total is restored to the full
+	 * (pre-wallet) amount so that invoicing plugins see the real sale
+	 * value, including taxes. The wallet portion is recorded in
+	 * _wsw_wallet_amount meta for refund/cancellation logic.
 	 *
 	 * @param int $order_id
 	 */
@@ -457,6 +456,12 @@ class WSW_Checkout {
 		if ( ! is_wp_error( $tx ) ) {
 			$order->update_meta_data( '_wsw_wallet_amount', $amount );
 			$order->delete_meta_data( '_wsw_wallet_pending' );
+
+			// Restore order total to the full (pre-wallet) amount so
+			// the invoice shows the real sale value with correct taxes.
+			$current_total = floatval( $order->get_total( 'edit' ) );
+			$order->set_total( round( $current_total + $amount, wc_get_price_decimals() ) );
+
 			$order->save();
 			$order->add_order_note(
 				sprintf(
