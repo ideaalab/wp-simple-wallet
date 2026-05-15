@@ -839,7 +839,7 @@ class WSW_Admin {
 			$delta  = 'debit' === $direction ? -$amount : $amount;
 		}
 
-		$result = WSW_Wallet::adjust( $user_id, $delta, WSW_Wallet::TYPE_ADJUSTMENT, $note );
+		$result = WSW_Wallet::adjust( $user_id, $delta, WSW_Wallet::TYPE_ADJUSTMENT, $note, array( 'source' => 'wp-simple-wallet' ) );
 
 		wp_safe_redirect(
 			add_query_arg(
