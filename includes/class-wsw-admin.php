@@ -162,26 +162,30 @@ class WSW_Admin {
 		echo '</div>';
 	}
 
+	private function render_flash_message() {
+		if ( ! isset( $_GET['wsw_msg'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return;
+		}
+		$msg = sanitize_text_field( wp_unslash( $_GET['wsw_msg'] ) ); // phpcs:ignore
+		$map = array(
+			'enabled'            => array( 'updated', __( 'Wallet enabled for the selected user.', 'wp-simple-wallet' ) ),
+			'removed'            => array( 'updated', __( 'Wallet disabled. Balance and transaction history were preserved.', 'wp-simple-wallet' ) ),
+			'limits_saved'       => array( 'updated', __( 'Overdraft limits saved.', 'wp-simple-wallet' ) ),
+			'adjustment_applied' => array( 'updated', __( 'Balance adjustment applied.', 'wp-simple-wallet' ) ),
+			'ok'                 => array( 'updated', __( 'Done.', 'wp-simple-wallet' ) ),
+		);
+		if ( isset( $map[ $msg ] ) ) {
+			echo '<div class="notice notice-' . esc_attr( $map[ $msg ][0] ) . ' is-dismissible"><p>' . esc_html( $map[ $msg ][1] ) . '</p></div>';
+		} else {
+			echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $msg ) . '</p></div>';
+		}
+	}
+
 	private function render_wallets_tab() {
 		$search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : ''; // phpcs:ignore
 		$users  = WSW_User::get_users_with_wallet( array( 'search' => $search ) );
 
-		// Flash messages.
-		if ( isset( $_GET['wsw_msg'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-			$msg  = sanitize_text_field( wp_unslash( $_GET['wsw_msg'] ) ); // phpcs:ignore
-			$map  = array(
-				'enabled'            => array( 'updated', __( 'Wallet enabled for the selected user.', 'wp-simple-wallet' ) ),
-				'removed'            => array( 'updated', __( 'Wallet disabled. Balance and transaction history were preserved.', 'wp-simple-wallet' ) ),
-				'limits_saved'       => array( 'updated', __( 'Overdraft limits saved.', 'wp-simple-wallet' ) ),
-				'adjustment_applied' => array( 'updated', __( 'Balance adjustment applied.', 'wp-simple-wallet' ) ),
-				'ok'                 => array( 'updated', __( 'Done.', 'wp-simple-wallet' ) ),
-			);
-			if ( isset( $map[ $msg ] ) ) {
-				echo '<div class="notice notice-' . esc_attr( $map[ $msg ][0] ) . ' is-dismissible"><p>' . esc_html( $map[ $msg ][1] ) . '</p></div>';
-			} else {
-				echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $msg ) . '</p></div>';
-			}
-		}
+		$this->render_flash_message();
 		?>
 		<div style="margin:12px 0;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
 			<form method="get" style="display:flex;gap:6px;margin:0">
@@ -285,6 +289,8 @@ class WSW_Admin {
 		$back    = add_query_arg( array( 'page' => self::MENU_SLUG, 'tab' => 'wallets' ), admin_url( 'admin.php' ) );
 
 		$txs = WSW_Wallet::get_transactions( array( 'user_id' => $user_id, 'limit' => 25 ) );
+
+		$this->render_flash_message();
 		?>
 		<p><a href="<?php echo esc_url( $back ); ?>">&larr; <?php esc_html_e( 'Back to wallets', 'wp-simple-wallet' ); ?></a></p>
 		<h2><?php echo esc_html( $user->display_name ); ?> — <?php echo wp_kses_post( wc_price( $balance ) ); ?></h2>
