@@ -59,6 +59,11 @@ class WSW_Admin {
 		$current = WSW_Wallet::get_settings();
 		$out     = $current;
 
+		$valid_modes        = array( 'payment', 'discount' );
+		$out['wallet_mode'] = isset( $input['wallet_mode'] ) && in_array( $input['wallet_mode'], $valid_modes, true )
+			? $input['wallet_mode']
+			: $current['wallet_mode'];
+
 		$out['allow_negative']       = isset( $input['allow_negative'] ) && 'yes' === $input['allow_negative'] ? 'yes' : 'no';
 		$out['max_negative']         = isset( $input['max_negative'] ) ? max( 0, (float) $input['max_negative'] ) : 0;
 		$out['cleanup_on_uninstall'] = isset( $input['cleanup_on_uninstall'] ) && 'yes' === $input['cleanup_on_uninstall'] ? 'yes' : 'no';
@@ -492,6 +497,26 @@ class WSW_Admin {
 		<form method="post" action="options.php">
 			<?php settings_fields( 'wsw_settings_group' ); ?>
 			<table class="form-table">
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Wallet mode', 'wp-simple-wallet' ); ?></th>
+					<td>
+						<select name="wsw_settings[wallet_mode]">
+							<option value="payment" <?php selected( $settings['wallet_mode'], 'payment' ); ?>>
+								<?php esc_html_e( 'Payment method', 'wp-simple-wallet' ); ?>
+							</option>
+							<option value="discount" <?php selected( $settings['wallet_mode'], 'discount' ); ?>>
+								<?php esc_html_e( 'Discount on taxable base', 'wp-simple-wallet' ); ?>
+							</option>
+						</select>
+						<p class="description">
+							<strong><?php esc_html_e( 'Payment method:', 'wp-simple-wallet' ); ?></strong>
+							<?php esc_html_e( 'The wallet covers part of the order total without affecting the tax base or tax amounts. Invoices reflect the full price. Suitable when the balance represents real money deposited by the customer.', 'wp-simple-wallet' ); ?>
+							<br>
+							<strong><?php esc_html_e( 'Discount on taxable base:', 'wp-simple-wallet' ); ?></strong>
+							<?php esc_html_e( 'The wallet reduces the taxable base before taxes are calculated, lowering both the base and the resulting tax. Invoices reflect the discounted price. Suitable when the balance is a reward or benefit (affiliate credit, promotions) and is not real money.', 'wp-simple-wallet' ); ?>
+						</p>
+					</td>
+				</tr>
 				<tr>
 					<th scope="row"><?php esc_html_e( 'Allow negative balance', 'wp-simple-wallet' ); ?></th>
 					<td>

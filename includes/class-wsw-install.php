@@ -76,6 +76,7 @@ class WSW_Install {
 			update_option(
 				'wsw_settings',
 				array(
+					'wallet_mode'          => 'payment',
 					'allow_negative'       => 'no',
 					'max_negative'         => '0',
 					'cleanup_on_uninstall' => 'no',

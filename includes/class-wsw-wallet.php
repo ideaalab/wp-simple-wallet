@@ -25,6 +25,7 @@ class WSW_Wallet {
 	public static function get_settings() {
 		$settings = get_option( 'wsw_settings', array() );
 		$defaults = array(
+			'wallet_mode'          => 'payment',
 			'allow_negative'       => 'no',
 			'max_negative'         => '0',
 			'cleanup_on_uninstall' => 'no',
