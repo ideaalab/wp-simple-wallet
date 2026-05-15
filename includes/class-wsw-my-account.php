@@ -98,7 +98,7 @@ class WSW_My_Account {
 		$show_icon  = ! isset( $settings['myaccount_show_icon'] ) || 'yes' === $settings['myaccount_show_icon'];
 		$icon_glyph = isset( $settings['myaccount_icon_glyph'] ) && $settings['myaccount_icon_glyph'] !== ''
 			? $settings['myaccount_icon_glyph']
-			: '\f526'; // dashicons-money-alt
+			: '\f18e'; // dashicons-money
 
 		/**
 		 * Override the CSS used to add an icon to the Wallet menu item.
@@ -110,7 +110,7 @@ class WSW_My_Account {
 		$icon_css = apply_filters(
 			'wsw_account_menu_icon_css',
 			sprintf(
-				'.woocommerce-MyAccount-navigation-link--%1$s > a::before{font-family:dashicons;content:"%2$s"}',
+				'.woocommerce-MyAccount-navigation-link--%1$s > a::before{font-family:dashicons!important;content:"%2$s"}',
 				self::ENDPOINT,
 				$icon_glyph
 			),

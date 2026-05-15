@@ -70,7 +70,7 @@ class WSW_Admin {
 
 		// Note: options.php already calls wp_unslash() before the sanitize
 		// callback, so we must NOT call it again (double-unslash strips
-		// the backslash from glyph codes like \f526).
+		// the backslash from glyph codes like \f18e).
 		$out['myaccount_position']   = isset( $input['myaccount_position'] ) ? sanitize_text_field( $input['myaccount_position'] ) : $current['myaccount_position'];
 		$out['myaccount_show_icon']  = isset( $input['myaccount_show_icon'] ) && 'yes' === $input['myaccount_show_icon'] ? 'yes' : 'no';
 		$out['myaccount_icon_glyph'] = isset( $input['myaccount_icon_glyph'] ) ? sanitize_text_field( $input['myaccount_icon_glyph'] ) : $current['myaccount_icon_glyph'];
@@ -573,13 +573,13 @@ class WSW_Admin {
 									__( 'Dashicon glyph code (default: %1$s). Find codes at the %2$sDashicons reference%3$s.', 'wp-simple-wallet' ),
 									array( 'a' => array( 'href' => array(), 'target' => array(), 'rel' => array() ), 'code' => array() )
 								),
-								'<code>\f526</code>',
+								'<code>\f18e</code>',
 								'<a href="https://developer.wordpress.org/resource/dashicons/" target="_blank" rel="noopener noreferrer">',
 								'</a>'
 							);
 							?>
 							<br/>
-							<input type="text" name="wsw_settings[myaccount_icon_glyph]" value="<?php echo esc_attr( $settings['myaccount_icon_glyph'] ); ?>" class="regular-text" placeholder="\f526" />
+							<input type="text" name="wsw_settings[myaccount_icon_glyph]" value="<?php echo esc_attr( $settings['myaccount_icon_glyph'] ); ?>" class="regular-text" placeholder="\f18e" />
 						</p>
 					</td>
 				</tr>

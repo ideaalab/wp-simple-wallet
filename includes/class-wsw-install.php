@@ -84,7 +84,7 @@ class WSW_Install {
 					'gateway_description'  => __( 'Use your wallet balance to pay for this order. Available: {balance}', 'wp-simple-wallet' ),
 					'myaccount_position'   => 'dashboard',
 					'myaccount_show_icon'  => 'yes',
-					'myaccount_icon_glyph' => '\f526',
+					'myaccount_icon_glyph' => '\f18e',
 				)
 			);
 		}
