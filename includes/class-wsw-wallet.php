@@ -31,7 +31,7 @@ class WSW_Wallet {
 			'cleanup_on_uninstall' => 'no',
 			'myaccount_position'   => 'dashboard',
 			'myaccount_show_icon'  => 'yes',
-			'myaccount_icon_glyph' => '\f18e',
+			'myaccount_icon_glyph' => '\f526',
 		);
 		return wp_parse_args( $settings, $defaults );
 	}
