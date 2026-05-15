@@ -2,22 +2,18 @@
 /**
  * Checkout integration: wallet balance box (gift-card style).
  *
- * The wallet is a PAYMENT METHOD, not a discount. Taxes (VAT/IVA) on
- * the order are never affected by the wallet — just like paying with
- * PayPal or a bank transfer does not change the tax on the invoice.
+ * Supports two modes, selected in Settings → Wallet mode:
  *
- * Architecture:
- * - NO negative cart fee is added (fees fire before taxes are final in
- *   some WC versions and can distort the tax calculation).
- * - Instead, woocommerce_calculated_total (which fires AFTER all taxes
- *   are computed) reduces only the payment total.
- * - A visual row is injected in the order review table to show the
- *   deduction.
- * - NO fee line item is added to the order. After payment succeeds and
- *   the wallet is debited, the order total is restored to the full
- *   (pre-wallet) amount so invoicing plugins see the correct tax base.
- * - A "Paid from wallet" row is injected into the order totals display
- *   (admin, emails, My Account) to document the payment split.
+ * PAYMENT MODE (default):
+ *   The wallet acts as a payment method. Taxes are never affected.
+ *   woocommerce_calculated_total reduces the total after taxes.
+ *   After the gateway processes, the order total is restored so
+ *   invoicing plugins see the correct tax base.
+ *
+ * DISCOUNT MODE:
+ *   The wallet reduces the taxable base via a negative taxable fee.
+ *   Taxes are recalculated on the reduced base. The order total
+ *   already reflects the discount and is NOT restored.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -33,8 +29,11 @@ class WSW_Checkout {
 		// Keep the box updated during AJAX checkout refreshes.
 		add_filter( 'woocommerce_update_order_review_fragments', array( $this, 'wallet_fragment' ) );
 
-		// Reduce the cart total AFTER taxes are fully calculated.
+		// Payment mode: reduce the cart total AFTER taxes are fully calculated.
 		add_filter( 'woocommerce_calculated_total', array( $this, 'adjust_cart_total' ), 10, 2 );
+
+		// Discount mode: add a negative taxable fee BEFORE taxes are calculated.
+		add_action( 'woocommerce_cart_calculate_fees', array( $this, 'add_discount_fee' ) );
 
 		// Show the wallet deduction row in the order review table.
 		add_action( 'woocommerce_review_order_before_order_total', array( $this, 'wallet_order_review_row' ) );
@@ -111,11 +110,58 @@ class WSW_Checkout {
 	}
 
 	/* ------------------------------------------------------------------
-	 * Cart total adjustment
+	 * Discount mode: negative taxable fee
 	 * ----------------------------------------------------------------*/
 
 	/**
-	 * Reduce the cart total by the wallet amount.
+	 * Add a negative taxable fee to reduce the tax base (discount mode).
+	 *
+	 * Fires during woocommerce_cart_calculate_fees, before taxes are
+	 * computed. The fee is taxable, so WooCommerce recalculates taxes
+	 * on the reduced base automatically.
+	 *
+	 * @param WC_Cart $cart
+	 */
+	public function add_discount_fee( $cart ) {
+		if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
+			return;
+		}
+		$settings = WSW_Wallet::get_settings();
+		if ( 'discount' !== $settings['wallet_mode'] ) {
+			return;
+		}
+		if ( ! WC()->session || ! WC()->session->get( 'wsw_apply_wallet' ) ) {
+			return;
+		}
+
+		$user_id = get_current_user_id();
+		if ( ! $user_id || ! WSW_User::is_wallet_active( $user_id ) ) {
+			WC()->session->set( 'wsw_apply_wallet', false );
+			return;
+		}
+
+		$max_applicable = self::get_max_applicable( $user_id );
+
+		// Cap at the taxable base (products + shipping − coupons).
+		$taxable_base = max( 0, $cart->get_subtotal() - $cart->get_discount_total() + $cart->get_shipping_total() );
+		$apply        = min( $max_applicable, $taxable_base );
+		$apply        = round( $apply, wc_get_price_decimals() );
+
+		if ( $apply <= 0 ) {
+			WC()->session->set( 'wsw_apply_amount', 0 );
+			return;
+		}
+
+		WC()->session->set( 'wsw_apply_amount', $apply );
+		$cart->add_fee( __( 'Wallet discount', 'wp-simple-wallet' ), -$apply, true );
+	}
+
+	/* ------------------------------------------------------------------
+	 * Payment mode: cart total adjustment
+	 * ----------------------------------------------------------------*/
+
+	/**
+	 * Reduce the cart total by the wallet amount (payment mode only).
 	 *
 	 * Hooked into woocommerce_calculated_total which fires AFTER item
 	 * taxes, shipping taxes and fee taxes have all been calculated and
@@ -128,6 +174,10 @@ class WSW_Checkout {
 	 */
 	public function adjust_cart_total( $total, $cart ) {
 		if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
+			return $total;
+		}
+		$settings = WSW_Wallet::get_settings();
+		if ( 'discount' === $settings['wallet_mode'] ) {
 			return $total;
 		}
 		if ( ! WC()->session || ! WC()->session->get( 'wsw_apply_wallet' ) ) {
@@ -160,6 +210,10 @@ class WSW_Checkout {
 	 * appears right above the "Total" line, after taxes.
 	 */
 	public function wallet_order_review_row() {
+		$settings = WSW_Wallet::get_settings();
+		if ( 'discount' === $settings['wallet_mode'] ) {
+			return;
+		}
 		if ( ! WC()->session || ! WC()->session->get( 'wsw_apply_wallet' ) ) {
 			return;
 		}
@@ -195,6 +249,12 @@ class WSW_Checkout {
 	public function order_totals_wallet_row( $rows, $order ) {
 		$wallet_amount = floatval( $order->get_meta( '_wsw_wallet_amount' ) );
 		if ( $wallet_amount <= 0 ) {
+			return $rows;
+		}
+
+		// In discount mode the fee line item already shows the discount.
+		$wallet_mode = $order->get_meta( '_wsw_wallet_mode' ) ?: 'payment';
+		if ( 'discount' === $wallet_mode ) {
 			return $rows;
 		}
 
@@ -237,9 +297,13 @@ class WSW_Checkout {
 		if ( $wallet_amount <= 0 ) {
 			return;
 		}
+		$wallet_mode = $order->get_meta( '_wsw_wallet_mode' ) ?: 'payment';
+		$label       = 'discount' === $wallet_mode
+			? __( 'Wallet discount (pre-tax):', 'wp-simple-wallet' )
+			: __( 'Paid from wallet:', 'wp-simple-wallet' );
 		?>
 		<p class="form-field form-field-wide">
-			<strong><?php esc_html_e( 'Paid from wallet:', 'wp-simple-wallet' ); ?></strong>
+			<strong><?php echo esc_html( $label ); ?></strong>
 			<?php echo wp_kses_post( wc_price( $wallet_amount ) ); ?>
 		</p>
 		<?php
@@ -262,10 +326,12 @@ class WSW_Checkout {
 			return '<div id="wsw-wallet-box"></div>';
 		}
 
-		$user_id = get_current_user_id();
-		$balance = WSW_Wallet::get_balance( $user_id );
-		$applied = WC()->session ? (bool) WC()->session->get( 'wsw_apply_wallet', false ) : false;
-		$amount  = WC()->session ? floatval( WC()->session->get( 'wsw_apply_amount', 0 ) ) : 0;
+		$user_id     = get_current_user_id();
+		$balance     = WSW_Wallet::get_balance( $user_id );
+		$applied     = WC()->session ? (bool) WC()->session->get( 'wsw_apply_wallet', false ) : false;
+		$amount      = WC()->session ? floatval( WC()->session->get( 'wsw_apply_amount', 0 ) ) : 0;
+		$settings    = WSW_Wallet::get_settings();
+		$is_discount = 'discount' === $settings['wallet_mode'];
 
 		ob_start();
 		?>
@@ -280,11 +346,19 @@ class WSW_Checkout {
 				<div class="wsw-wallet-applied-row">
 					<span class="wsw-wallet-discount">
 						<?php
-						printf(
-							/* translators: %s: formatted price, e.g. €78.12 */
-							esc_html__( '%s will be deducted from your wallet.', 'wp-simple-wallet' ),
-							wp_kses_post( wc_price( $amount ) )
-						);
+						if ( $is_discount ) {
+							printf(
+								/* translators: %s: formatted price, e.g. €78.12 */
+								esc_html__( '%s discount applied from your wallet.', 'wp-simple-wallet' ),
+								wp_kses_post( wc_price( $amount ) )
+							);
+						} else {
+							printf(
+								/* translators: %s: formatted price, e.g. €78.12 */
+								esc_html__( '%s will be deducted from your wallet.', 'wp-simple-wallet' ),
+								wp_kses_post( wc_price( $amount ) )
+							);
+						}
 						?>
 					</span>
 					<a href="#" id="wsw-remove-wallet" class="wsw-wallet-remove">
@@ -294,7 +368,13 @@ class WSW_Checkout {
 			<?php else : ?>
 				<label class="wsw-wallet-toggle">
 					<input type="checkbox" id="wsw-apply-wallet" value="1" />
-					<?php esc_html_e( 'Apply wallet balance to this order', 'wp-simple-wallet' ); ?>
+					<?php
+					if ( $is_discount ) {
+						esc_html_e( 'Apply wallet discount to this order', 'wp-simple-wallet' );
+					} else {
+						esc_html_e( 'Apply wallet balance to this order', 'wp-simple-wallet' );
+					}
+					?>
 				</label>
 			<?php endif; ?>
 		</div>
@@ -480,10 +560,15 @@ class WSW_Checkout {
 			return;
 		}
 
+		$settings    = WSW_Wallet::get_settings();
+		$wallet_mode = $settings['wallet_mode'];
+
 		// Debit wallet immediately.
 		$note = sprintf(
 			/* translators: %d: order number */
-			__( 'Payment for order #%d', 'wp-simple-wallet' ),
+			'discount' === $wallet_mode
+				? __( 'Discount applied for order #%d', 'wp-simple-wallet' )
+				: __( 'Payment for order #%d', 'wp-simple-wallet' ),
 			$order->get_id()
 		);
 
@@ -500,13 +585,24 @@ class WSW_Checkout {
 
 		if ( ! is_wp_error( $tx ) ) {
 			$order->update_meta_data( '_wsw_wallet_amount', $amount );
+			$order->update_meta_data( '_wsw_wallet_mode', $wallet_mode );
 			$order->save();
 
 			// Build a detailed order note with payment breakdown.
 			$gateway_amount = floatval( $order->get_total( 'edit' ) );
 			$gateway_title  = $order->get_payment_method_title();
 
-			if ( $gateway_amount > 0 && $gateway_title ) {
+			if ( 'discount' === $wallet_mode ) {
+				$order->add_order_note(
+					sprintf(
+						/* translators: 1: wallet amount, 2: gateway amount, 3: payment method name */
+						__( 'Wallet: %1$s discount applied (pre-tax). %2$s via %3$s.', 'wp-simple-wallet' ),
+						wc_price( $amount ),
+						wc_price( $gateway_amount ),
+						$gateway_title ?: __( 'gateway', 'wp-simple-wallet' )
+					)
+				);
+			} elseif ( $gateway_amount > 0 && $gateway_title ) {
 				$order->add_order_note(
 					sprintf(
 						/* translators: 1: wallet amount, 2: gateway amount, 3: payment method name */
@@ -591,6 +687,12 @@ class WSW_Checkout {
 					);
 				}
 			}
+		}
+
+		// In discount mode the total is already correct — nothing to restore.
+		$wallet_mode = $order->get_meta( '_wsw_wallet_mode' ) ?: 'payment';
+		if ( 'discount' === $wallet_mode ) {
+			return;
 		}
 
 		// Restore order total to the full (pre-wallet) amount.

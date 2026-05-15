@@ -74,17 +74,22 @@ class WSW_Plugin {
 			return;
 		}
 
-		// For split-payment orders (wallet + gateway), do NOT auto-refund
-		// the wallet portion — the gateway handles its own refund and the
-		// admin should adjust wallet manually.
-		$order_total = floatval( $order->get_total() );
-		if ( $order->get_meta( '_wsw_total_restored' ) ) {
-			$gateway_charged = $order_total - $wallet_amount;
-		} else {
-			$gateway_charged = $order_total;
-		}
-		if ( ! $is_legacy && $gateway_charged > 0.01 ) {
-			return;
+		// In PAYMENT mode with split payment (wallet + gateway), do NOT
+		// auto-refund the wallet — the admin should adjust manually.
+		// In DISCOUNT mode the wallet is a separate concept from the
+		// gateway charge, so always auto-refund the wallet portion.
+		$wallet_mode = $order->get_meta( '_wsw_wallet_mode' ) ?: 'payment';
+
+		if ( 'payment' === $wallet_mode ) {
+			$order_total = floatval( $order->get_total() );
+			if ( $order->get_meta( '_wsw_total_restored' ) ) {
+				$gateway_charged = $order_total - $wallet_amount;
+			} else {
+				$gateway_charged = $order_total;
+			}
+			if ( ! $is_legacy && $gateway_charged > 0.01 ) {
+				return;
+			}
 		}
 
 		$refund = wc_get_order( $refund_id );
