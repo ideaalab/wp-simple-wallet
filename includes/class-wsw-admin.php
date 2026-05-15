@@ -68,9 +68,12 @@ class WSW_Admin {
 		$out['max_negative']         = isset( $input['max_negative'] ) ? max( 0, (float) $input['max_negative'] ) : 0;
 		$out['cleanup_on_uninstall'] = isset( $input['cleanup_on_uninstall'] ) && 'yes' === $input['cleanup_on_uninstall'] ? 'yes' : 'no';
 
-		$out['myaccount_position']   = isset( $input['myaccount_position'] ) ? sanitize_text_field( wp_unslash( $input['myaccount_position'] ) ) : $current['myaccount_position'];
+		// Note: options.php already calls wp_unslash() before the sanitize
+		// callback, so we must NOT call it again (double-unslash strips
+		// the backslash from glyph codes like \f18e).
+		$out['myaccount_position']   = isset( $input['myaccount_position'] ) ? sanitize_text_field( $input['myaccount_position'] ) : $current['myaccount_position'];
 		$out['myaccount_show_icon']  = isset( $input['myaccount_show_icon'] ) && 'yes' === $input['myaccount_show_icon'] ? 'yes' : 'no';
-		$out['myaccount_icon_glyph'] = isset( $input['myaccount_icon_glyph'] ) ? sanitize_text_field( wp_unslash( $input['myaccount_icon_glyph'] ) ) : $current['myaccount_icon_glyph'];
+		$out['myaccount_icon_glyph'] = isset( $input['myaccount_icon_glyph'] ) ? sanitize_text_field( $input['myaccount_icon_glyph'] ) : $current['myaccount_icon_glyph'];
 
 		if ( $out['myaccount_position'] !== $current['myaccount_position']
 			|| $out['myaccount_show_icon'] !== $current['myaccount_show_icon']
@@ -565,9 +568,14 @@ class WSW_Admin {
 						<p class="description">
 							<?php
 							printf(
-								/* translators: %s: link to dashicons reference */
-								esc_html__( 'Dashicon glyph code (default: %s). Find more codes at the Dashicons reference.', 'wp-simple-wallet' ),
-								'<code>\f18e</code>'
+								/* translators: 1: default glyph code, 2: opening link tag, 3: closing link tag */
+								wp_kses(
+									__( 'Dashicon glyph code (default: %1$s). Find codes at the %2$sDashicons reference%3$s.', 'wp-simple-wallet' ),
+									array( 'a' => array( 'href' => array(), 'target' => array(), 'rel' => array() ), 'code' => array() )
+								),
+								'<code>\f18e</code>',
+								'<a href="https://developer.wordpress.org/resource/dashicons/" target="_blank" rel="noopener noreferrer">',
+								'</a>'
 							);
 							?>
 							<br/>
