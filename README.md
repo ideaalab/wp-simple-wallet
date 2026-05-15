@@ -242,7 +242,7 @@ Any PHP code running on your site (themes, plugins, mu-plugins, snippets, schedu
 ### 1.2.1
 - **Fix**: 404 on `/my-account/wallet/` after plugin upgrades. Rewrite rules are now flushed automatically once per version.
 - New setting: **My Account menu position** — choose where the Wallet link appears (First, after Dashboard/Orders/Downloads/Addresses/Payment methods/Account details, or Last).
-- New setting: **Show menu icon** — adds a Dashicons glyph next to the Wallet label as a generic fallback for themes that don't style our custom endpoint. The glyph (default `\f18e`, the "money" icon) is configurable. Filter `wsw_account_menu_icon_css` lets themes override the entire CSS.
+- New setting: **Show menu icon** — adds a Dashicons glyph next to the Wallet label as a generic fallback for themes that don't style our custom endpoint. The glyph (default `\f526`, the "money-alt" icon) is configurable. Filter `wsw_account_menu_icon_css` lets themes override the entire CSS.
 
 ### 1.2.0
 - **My Account**: redesigned wallet tab with a prominent balance card and a styled, responsive movements table.

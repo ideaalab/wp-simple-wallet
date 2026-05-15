@@ -98,7 +98,7 @@ class WSW_My_Account {
 		$show_icon  = ! isset( $settings['myaccount_show_icon'] ) || 'yes' === $settings['myaccount_show_icon'];
 		$icon_glyph = isset( $settings['myaccount_icon_glyph'] ) && $settings['myaccount_icon_glyph'] !== ''
 			? $settings['myaccount_icon_glyph']
-			: '\f18e'; // dashicons-money
+			: '\f526'; // dashicons-money-alt
 
 		/**
 		 * Override the CSS used to add an icon to the Wallet menu item.
